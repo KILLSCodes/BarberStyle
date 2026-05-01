@@ -276,6 +276,20 @@ select {
   font-size: 14px;
 }
 
+.btn-account-logout {
+  border-color: rgba(255, 255, 255, 0.16);
+  background: rgba(255, 255, 255, 0.04);
+  color: rgba(255, 255, 255, 0.82);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.03);
+}
+
+.btn-account-logout:hover,
+.btn-account-logout:focus-visible {
+  border-color: rgba(201, 164, 95, 0.66);
+  background: rgba(201, 164, 95, 0.12);
+  color: var(--gold);
+}
+
 .menu-toggle {
   display: none;
   width: 44px;
