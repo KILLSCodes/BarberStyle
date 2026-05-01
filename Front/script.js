@@ -1,6 +1,6 @@
 const siteConfig = {
   brandName: "BarberStyle",
-  apiUrl: import.meta.env.VITE_API_URL || "",
+  apiUrl: import.meta.env.VITE_API_URL || (import.meta.env.PROD ? "https://barberstyle-mvqd.onrender.com" : ""),
   whatsappNumber: "5511999999999",
   whatsappText: "Olá! Quero falar com a BarberStyle.",
   whatsappDisplay: "(11) 99999-9999",

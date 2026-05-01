@@ -1,4 +1,4 @@
-const apiUrl = import.meta.env.VITE_API_URL || "";
+const apiUrl = import.meta.env.VITE_API_URL || (import.meta.env.PROD ? "https://barberstyle-mvqd.onrender.com" : "");
 const bookingStorageKey = "barberstyle_bookings";
 const params = new URLSearchParams(window.location.search);
 const id = params.get("id") || params.get("appointmentId");

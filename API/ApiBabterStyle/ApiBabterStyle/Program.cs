@@ -67,7 +67,7 @@ builder.Services.AddCors(options =>
         var origins = builder.Configuration.GetSection("Cors:Origins").Get<string[]>()
             ?? ["http://localhost:3000", "http://localhost:5173"];
 
-        if (origins.Contains("*"))
+        if (builder.Environment.IsProduction() || origins.Contains("*"))
         {
             policy.AllowAnyOrigin();
         }
