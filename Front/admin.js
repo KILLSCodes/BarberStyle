@@ -32,6 +32,8 @@ const boardDateLabel = document.querySelector("[data-board-date-label]");
 const dayBoard = document.querySelector("[data-day-board]");
 const dayBoardEmpty = document.querySelector("[data-day-board-empty]");
 const nextAppointmentEl = document.querySelector("[data-next-appointment]");
+const dateHint = document.querySelector("[data-date-hint]");
+const showAllBookingsButton = document.querySelector("[data-show-all-bookings]");
 const quickDateButtons = document.querySelectorAll("[data-quick-date]");
 const serviceForm = document.querySelector("[data-service-form]");
 const serviceList = document.querySelector("[data-service-list]");
@@ -284,17 +286,20 @@ function render() {
 }
 
 function renderDayBoard() {
-  if (!dayBoard || !dayBoardEmpty || !nextAppointmentEl || !boardDateLabel) {
+  if (!dayBoard || !dayBoardEmpty || !nextAppointmentEl || !boardDateLabel || !dateHint) {
     return;
   }
 
   const selectedDate = dateFilter.value || today;
+  const sortedBookings = [...bookings].sort(compareBookingsByTime);
+  const activeSortedBookings = sortedBookings.filter((booking) => booking.status !== "Cancelado");
   const dayBookings = bookings
     .filter((booking) => booking.date === selectedDate)
     .sort(compareBookingsByTime);
   const activeBookings = dayBookings.filter((booking) => booking.status !== "Cancelado");
-  const nextBooking = activeBookings.find((booking) => new Date(`${booking.date}T${booking.time}:00`).getTime() >= Date.now())
-    || activeBookings[0];
+  const nextBooking = activeSortedBookings.find((booking) => new Date(`${booking.date}T${booking.time}:00`).getTime() >= Date.now())
+    || activeSortedBookings[0];
+  const nextBookingIsOnSelectedDate = nextBooking?.date === selectedDate;
 
   boardDateLabel.textContent = `Mostrando ${formatDate(selectedDate)} - ${dayBookings.length} horario(s)`;
   dayBoard.innerHTML = "";
@@ -302,13 +307,26 @@ function renderDayBoard() {
 
   if (nextBooking) {
     nextAppointmentEl.innerHTML = `
-      <span>Proximo horario</span>
-      <strong>${escapeHtml(nextBooking.time)} - ${escapeHtml(nextBooking.name)}</strong>
+      <span>${nextBookingIsOnSelectedDate ? "Proximo horario da data" : "Proximo horario geral"}</span>
+      <strong>${formatDate(nextBooking.date)} ${escapeHtml(nextBooking.time)} - ${escapeHtml(nextBooking.name)}</strong>
       <p>${escapeHtml(nextBooking.service)} com ${escapeHtml(nextBooking.barber)} · ${escapeHtml(nextBooking.status)} · ${escapeHtml(nextBooking.paymentStatus)}</p>
+      <button type="button" data-focus-booking="${nextBooking.id}">Ver na agenda</button>
     `;
     nextAppointmentEl.hidden = false;
   } else {
     nextAppointmentEl.hidden = true;
+  }
+
+  if (!dayBookings.length && bookings.length) {
+    dateHint.innerHTML = `
+      Existe ${bookings.length} horario(s) registrado(s), mas nenhum em ${formatDate(selectedDate)}.
+      <button type="button" data-jump-next-booking>Ir para o proximo horario</button>
+      <button type="button" data-clear-date-filter>Mostrar todos na tabela</button>
+    `;
+    dateHint.hidden = false;
+  } else {
+    dateHint.hidden = true;
+    dateHint.innerHTML = "";
   }
 
   const barberNames = [...new Set(dayBookings.map((booking) => booking.barber || "Sem barbeiro"))].sort((a, b) => a.localeCompare(b));
@@ -564,6 +582,43 @@ dayBoard?.addEventListener("click", (event) => {
   }
 
   focusBooking(slotCard.dataset.focusBooking);
+});
+
+nextAppointmentEl?.addEventListener("click", (event) => {
+  const focusButton = event.target.closest("[data-focus-booking]");
+  if (!focusButton) {
+    return;
+  }
+
+  focusBooking(focusButton.dataset.focusBooking);
+});
+
+dateHint?.addEventListener("click", (event) => {
+  if (event.target.closest("[data-jump-next-booking]")) {
+    const nextBooking = [...bookings]
+      .filter((booking) => booking.status !== "Cancelado")
+      .sort(compareBookingsByTime)
+      .find((booking) => new Date(`${booking.date}T${booking.time}:00`).getTime() >= Date.now())
+      || [...bookings].sort(compareBookingsByTime)[0];
+
+    if (nextBooking) {
+      focusBooking(nextBooking.id);
+    }
+  }
+
+  if (event.target.closest("[data-clear-date-filter]")) {
+    dateFilter.value = "";
+    render();
+    document.querySelector("#lista-agenda")?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+});
+
+showAllBookingsButton?.addEventListener("click", () => {
+  searchInput.value = "";
+  dateFilter.value = "";
+  statusFilter.value = "";
+  render();
+  document.querySelector("#lista-agenda")?.scrollIntoView({ behavior: "smooth", block: "start" });
 });
 
 async function updateApiAppointmentStatus(id, status) {
