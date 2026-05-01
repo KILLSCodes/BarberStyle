@@ -331,10 +331,9 @@ public class AppointmentsController(BarberShopDbContext db, MercadoPagoService m
             return NotFound(new { message = "Agendamento nao encontrado." });
         }
 
-        appointment.Status = status;
         if (status == AppointmentStatus.Cancelled)
         {
-            var validation = await CancelWithRefundAsync(appointment, cancellationToken);
+            var validation = await CancelWithRefundAsync(appointment, cancellationToken, requestedByAdmin: true);
             if (validation is not null)
             {
                 return validation;
@@ -466,7 +465,7 @@ public class AppointmentsController(BarberShopDbContext db, MercadoPagoService m
             appointment.CreatedAt);
     }
 
-    private async Task<ActionResult?> CancelWithRefundAsync(Appointment appointment, CancellationToken cancellationToken)
+    private async Task<ActionResult?> CancelWithRefundAsync(Appointment appointment, CancellationToken cancellationToken, bool requestedByAdmin = false)
     {
         if (appointment.Status == AppointmentStatus.Cancelled)
         {
@@ -475,17 +474,20 @@ public class AppointmentsController(BarberShopDbContext db, MercadoPagoService m
 
         if (appointment.PaymentStatus == PaymentStatus.Paid)
         {
-            var now = DateTime.UtcNow;
-            var refundLimit = appointment.ScheduledAt.AddHours(-2);
-
-            if (now > refundLimit)
+            if (!requestedByAdmin)
             {
-                return BadRequest(new { message = "Estorno indisponivel. O cancelamento com estorno so pode ser feito ate 2 horas antes do horario agendado." });
-            }
+                var now = DateTime.UtcNow;
+                var refundLimit = appointment.ScheduledAt.AddHours(-2);
 
-            if (now >= appointment.ScheduledAt)
-            {
-                return BadRequest(new { message = "Estorno indisponivel depois do horario agendado." });
+                if (now > refundLimit)
+                {
+                    return BadRequest(new { message = "Estorno indisponivel. O cancelamento com estorno so pode ser feito ate 2 horas antes do horario agendado." });
+                }
+
+                if (now >= appointment.ScheduledAt)
+                {
+                    return BadRequest(new { message = "Estorno indisponivel depois do horario agendado." });
+                }
             }
 
             if (!long.TryParse(appointment.MercadoPagoPaymentId, out var paymentId))
