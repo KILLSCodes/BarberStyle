@@ -1,4 +1,4 @@
-const apiUrl = import.meta.env.VITE_API_URL || "";
+const apiUrl = import.meta.env.VITE_API_URL || (import.meta.env.PROD ? "https://barberstyle-mvqd.onrender.com" : "");
 const sessionKey = "barberstyle_customer_session";
 const usersKey = "barberstyle_customer_users";
 const bookingKey = "barberstyle_bookings";

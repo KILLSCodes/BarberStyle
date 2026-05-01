@@ -2,7 +2,7 @@ const bookingStorageKey = "barberstyle_bookings";
 const servicesStorageKey = "barberstyle_services";
 const scheduleStorageKey = "barberstyle_schedule";
 const sessionStorageKey = "barberstyle_customer_session";
-const defaultApiUrl = import.meta.env.VITE_API_URL || "";
+const defaultApiUrl = import.meta.env.VITE_API_URL || (import.meta.env.PROD ? "https://barberstyle-mvqd.onrender.com" : "");
 
 const defaultServices = [
   { id: "corte", name: "Corte masculino", description: "Corte completo", price: 65, duration: 45, active: true },
