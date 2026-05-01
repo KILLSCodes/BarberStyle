@@ -78,6 +78,7 @@ function applyInitialAuthTab() {
 
 async function handleRegister(event) {
   event.preventDefault();
+  authMessage.textContent = "Criando sua conta...";
   const data = new FormData(registerForm);
   const payload = {
     name: data.get("name").trim(),
@@ -103,12 +104,13 @@ async function handleRegister(event) {
     authMessage.textContent = "Cadastro realizado com sucesso. Entre com seu email e senha.";
     window.history.replaceState({}, document.title, "cliente.html?tab=login");
   } catch (error) {
-    authMessage.textContent = `${error.message} Verifique se a API esta rodando para salvar o cadastro no banco.`;
+    authMessage.textContent = error.message;
   }
 }
 
 async function handleLogin(event) {
   event.preventDefault();
+  authMessage.textContent = "Entrando...";
   const data = new FormData(loginForm);
   const payload = {
     email: data.get("email").trim().toLowerCase(),
@@ -130,7 +132,9 @@ async function handleLogin(event) {
     saveSession(auth);
     window.location.href = "index.html";
   } catch (error) {
-    authMessage.textContent = `${error.message} Verifique se a API esta rodando.`;
+    authMessage.textContent = error.message.includes("Failed to fetch")
+      ? "Nao foi possivel conectar com a API agora. Tente novamente em instantes."
+      : `${error.message} Se ainda nao tem cadastro, clique em Criar conta.`;
   }
 }
 

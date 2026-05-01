@@ -96,5 +96,11 @@ if (!app.Environment.IsDevelopment())
 app.UseCors("Frontend");
 app.UseAuthentication();
 app.UseAuthorization();
+app.MapGet("/", () => Results.Ok(new
+{
+    name = "BarberStyle API",
+    status = "online",
+    message = "API online. Use /api/servicos, /api/barbeiros e demais rotas /api."
+}));
 app.MapControllers();
 app.Run();
