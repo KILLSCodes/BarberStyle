@@ -28,6 +28,11 @@ const logDateInput = document.querySelector("[data-log-date]");
 const clearFiltersButton = document.querySelector("[data-clear-filters]");
 const clearDayButton = document.querySelector("[data-clear-day]");
 const exportButton = document.querySelector("[data-export]");
+const boardDateLabel = document.querySelector("[data-board-date-label]");
+const dayBoard = document.querySelector("[data-day-board]");
+const dayBoardEmpty = document.querySelector("[data-day-board-empty]");
+const nextAppointmentEl = document.querySelector("[data-next-appointment]");
+const quickDateButtons = document.querySelectorAll("[data-quick-date]");
 const serviceForm = document.querySelector("[data-service-form]");
 const serviceList = document.querySelector("[data-service-list]");
 const scheduleForm = document.querySelector("[data-schedule-form]");
@@ -44,6 +49,7 @@ let adminApiUrl = "";
 let adminToken = "";
 let dashboardRefreshTimer = null;
 let isRefreshingDashboard = false;
+let highlightedBookingId = "";
 
 const today = getTodayDate();
 dateFilter.value = today;
@@ -234,6 +240,8 @@ function render() {
 
   filtered.forEach((booking) => {
     const row = document.createElement("tr");
+    row.dataset.bookingRow = booking.id;
+    row.classList.toggle("is-highlighted", booking.id === highlightedBookingId);
     row.innerHTML = `
       <td>
         <strong>${formatDate(booking.date)}</strong>
@@ -268,10 +276,92 @@ function render() {
   });
 
   emptyState.hidden = filtered.length > 0;
+  renderDayBoard();
   renderLogs();
   renderServices();
   renderSchedule();
   updateMetrics();
+}
+
+function renderDayBoard() {
+  if (!dayBoard || !dayBoardEmpty || !nextAppointmentEl || !boardDateLabel) {
+    return;
+  }
+
+  const selectedDate = dateFilter.value || today;
+  const dayBookings = bookings
+    .filter((booking) => booking.date === selectedDate)
+    .sort(compareBookingsByTime);
+  const activeBookings = dayBookings.filter((booking) => booking.status !== "Cancelado");
+  const nextBooking = activeBookings.find((booking) => new Date(`${booking.date}T${booking.time}:00`).getTime() >= Date.now())
+    || activeBookings[0];
+
+  boardDateLabel.textContent = `Mostrando ${formatDate(selectedDate)} - ${dayBookings.length} horario(s)`;
+  dayBoard.innerHTML = "";
+  dayBoardEmpty.hidden = dayBookings.length > 0;
+
+  if (nextBooking) {
+    nextAppointmentEl.innerHTML = `
+      <span>Proximo horario</span>
+      <strong>${escapeHtml(nextBooking.time)} - ${escapeHtml(nextBooking.name)}</strong>
+      <p>${escapeHtml(nextBooking.service)} com ${escapeHtml(nextBooking.barber)} · ${escapeHtml(nextBooking.status)} · ${escapeHtml(nextBooking.paymentStatus)}</p>
+    `;
+    nextAppointmentEl.hidden = false;
+  } else {
+    nextAppointmentEl.hidden = true;
+  }
+
+  const barberNames = [...new Set(dayBookings.map((booking) => booking.barber || "Sem barbeiro"))].sort((a, b) => a.localeCompare(b));
+
+  barberNames.forEach((barberName) => {
+    const barberBookings = dayBookings.filter((booking) => (booking.barber || "Sem barbeiro") === barberName);
+    const column = document.createElement("article");
+    column.className = "barber-column";
+    column.innerHTML = `
+      <header>
+        <strong>${escapeHtml(barberName)}</strong>
+        <span>${barberBookings.length} horario(s)</span>
+      </header>
+      <div class="barber-slots"></div>
+    `;
+
+    const slots = column.querySelector(".barber-slots");
+    barberBookings.forEach((booking) => {
+      const card = document.createElement("button");
+      card.type = "button";
+      card.className = `slot-card ${slug(booking.status)}`;
+      card.dataset.focusBooking = booking.id;
+      card.innerHTML = `
+        <span>${escapeHtml(booking.time)}</span>
+        <strong>${escapeHtml(booking.name)}</strong>
+        <small>${escapeHtml(booking.service)} · ${formatMoney(booking.price)}</small>
+        <em>${escapeHtml(booking.status)} · ${escapeHtml(booking.paymentStatus)}</em>
+      `;
+      slots.appendChild(card);
+    });
+
+    dayBoard.appendChild(column);
+  });
+}
+
+function compareBookingsByTime(a, b) {
+  return new Date(`${a.date}T${a.time}:00`) - new Date(`${b.date}T${b.time}:00`);
+}
+
+function focusBooking(id) {
+  const booking = bookings.find((item) => item.id === id);
+  if (!booking) {
+    return;
+  }
+
+  highlightedBookingId = id;
+  dateFilter.value = booking.date;
+  searchInput.value = "";
+  statusFilter.value = "";
+  render();
+
+  const row = table.querySelector(`[data-booking-row="${CSS.escape(id)}"]`);
+  row?.scrollIntoView({ behavior: "smooth", block: "center" });
 }
 
 function updateMetrics() {
@@ -357,6 +447,12 @@ function toInputDate(date) {
 
 function getTodayDate() {
   return toInputDate(new Date());
+}
+
+function addDaysToInputDate(date, days) {
+  const nextDate = new Date(date);
+  nextDate.setDate(nextDate.getDate() + days);
+  return toInputDate(nextDate);
 }
 
 function formatMoney(value) {
@@ -461,6 +557,15 @@ table.addEventListener("click", async (event) => {
   render();
 });
 
+dayBoard?.addEventListener("click", (event) => {
+  const slotCard = event.target.closest("[data-focus-booking]");
+  if (!slotCard) {
+    return;
+  }
+
+  focusBooking(slotCard.dataset.focusBooking);
+});
+
 async function updateApiAppointmentStatus(id, status) {
   const apiStatus = {
     Confirmado: "Scheduled",
@@ -548,6 +653,15 @@ async function updateApiPaymentStatus(id, paymentStatus) {
 
 [searchInput, dateFilter, statusFilter, logDateInput].forEach((input) => {
   input.addEventListener("input", render);
+});
+
+quickDateButtons.forEach((button) => {
+  button.addEventListener("click", () => {
+    dateFilter.value = button.dataset.quickDate === "tomorrow"
+      ? addDaysToInputDate(new Date(), 1)
+      : today;
+    render();
+  });
 });
 
 clearFiltersButton.addEventListener("click", () => {

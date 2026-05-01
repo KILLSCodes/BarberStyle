@@ -30,7 +30,7 @@
           <a href="#metricas">Metricas</a>
           <a href="#logs">Logs do dia</a>
           <a href="#servicos">Servicos</a>
-          <a href="#horarios">Horarios</a>
+          <a href="#config-horarios">Horarios</a>
         </nav>
 
         <div class="sidebar-card">
@@ -77,6 +77,26 @@
           </article>
         </section>
 
+        <section class="panel agenda-overview" id="agenda">
+          <div class="panel-header">
+            <div>
+              <p class="eyebrow">Controle visual</p>
+              <h2>Agenda do dia</h2>
+              <p data-board-date-label>--</p>
+            </div>
+            <div class="quick-date-actions" aria-label="Filtros rapidos de data">
+              <button type="button" data-quick-date="today">Hoje</button>
+              <button type="button" data-quick-date="tomorrow">Amanha</button>
+            </div>
+          </div>
+
+          <div class="next-appointment" data-next-appointment></div>
+          <div class="agenda-board" data-day-board></div>
+          <div class="empty-state" data-day-board-empty hidden>
+            Nenhum horario marcado para a data selecionada.
+          </div>
+        </section>
+
         <section class="panel day-log" id="logs">
           <div class="panel-header">
             <div>
@@ -119,7 +139,7 @@
           </div>
         </section>
 
-        <section class="panel" id="agenda">
+        <section class="panel" id="lista-agenda">
           <div class="panel-header">
             <div>
               <p class="eyebrow">Filtros</p>
@@ -212,7 +232,7 @@
           <div class="service-list" data-service-list></div>
         </section>
 
-        <section class="panel schedule-panel" id="horarios">
+        <section class="panel schedule-panel" id="config-horarios">
           <div class="panel-header">
             <div>
               <p class="eyebrow">Configuracao</p>
