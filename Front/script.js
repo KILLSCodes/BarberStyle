@@ -9,6 +9,7 @@ const siteConfig = {
 };
 
 const bookingStorageKey = "barberstyle_bookings";
+const customerSessionKey = "barberstyle_customer_session";
 const servicesStorageKey = "barberstyle_services";
 const scheduleStorageKey = "barberstyle_schedule";
 const availableBarbers = ["Ton Barber", "Michael Trindade", "Valdir Bispo"];
@@ -31,12 +32,23 @@ const navPanel = document.querySelector("[data-nav-panel]");
 const navLinks = document.querySelectorAll(".nav-panel a");
 const whatsappLinks = document.querySelectorAll("[data-whatsapp-link]");
 const bookingForm = document.querySelector("[data-booking-form]");
+const bookingAuthWarning = document.querySelector("[data-booking-auth-warning]");
 const bookingSuccess = document.querySelector("[data-booking-success]");
 const bookingError = document.querySelector("[data-booking-error]");
 const dateInput = document.querySelector("[data-date-input]");
 const timeSelect = document.querySelector("[data-time-select]");
 const serviceSelect = document.querySelector("[data-service-select]");
 const planLinks = document.querySelectorAll("[data-plan]");
+const dashboardLink = document.querySelector("[data-dashboard-link]");
+const accountToggle = document.querySelector("[data-account-toggle]");
+const accountMenu = document.querySelector("[data-account-menu]");
+const accountName = document.querySelector("[data-account-name]");
+const accountEmail = document.querySelector("[data-account-email]");
+const accountPhone = document.querySelector("[data-account-phone]");
+const accountRegister = document.querySelector("[data-account-register]");
+const accountLogin = document.querySelector("[data-account-login]");
+const accountAppointments = document.querySelector("[data-account-appointments]");
+const accountLogout = document.querySelector("[data-account-logout]");
 
 function applyConfig() {
   document.querySelectorAll("[data-brand-name]").forEach((element) => {
@@ -110,8 +122,11 @@ function initRevealAnimation() {
 }
 
 function initBookingForm() {
+  loadApiServices();
   populateServiceOptions();
   populateTimeOptions();
+  fillBookingFromSession();
+  updateBookingAuthState();
 
   if (dateInput) {
     dateInput.min = getTodayDate();
@@ -134,6 +149,14 @@ function initBookingForm() {
 
   bookingForm.addEventListener("submit", async (event) => {
     event.preventDefault();
+
+    const session = getCustomerSession();
+    if (!session?.token) {
+      showBookingMessage("Para agendar, crie sua conta ou entre com seu email e senha.", "error");
+      bookingAuthWarning.hidden = false;
+      window.location.href = "cliente.html";
+      return;
+    }
 
     if (!bookingForm.checkValidity()) {
       bookingForm.reportValidity();
@@ -233,11 +256,143 @@ function initBookingForm() {
   });
 }
 
+async function loadApiServices() {
+  try {
+    const response = await fetch(`${siteConfig.apiUrl}/api/servicos`);
+    const payload = await response.json().catch(() => null);
+
+    if (!response.ok || !Array.isArray(payload)) {
+      return;
+    }
+
+    const apiServices = payload.map((service) => ({
+      id: service.id,
+      name: service.name,
+      description: service.description || "",
+      price: Number(service.price || 0),
+      duration: Number(service.durationMinutes || service.duration || 0),
+      durationMinutes: Number(service.durationMinutes || service.duration || 0),
+      active: true,
+    }));
+
+    localStorage.setItem(servicesStorageKey, JSON.stringify(apiServices));
+    populateServiceOptions();
+  } catch {
+    // Mantem os servicos locais se a API nao estiver disponivel.
+  }
+}
+
+function fillBookingFromSession() {
+  if (!bookingForm) {
+    return;
+  }
+
+  const session = getCustomerSession();
+  if (!session) {
+    return;
+  }
+
+  bookingForm.elements.name.value = session.name || "";
+  bookingForm.elements.email.value = session.email || "";
+  bookingForm.elements.phone.value = session.phone || "";
+}
+
+function updateBookingAuthState() {
+  if (!bookingAuthWarning) {
+    return;
+  }
+
+  const session = getCustomerSession();
+  bookingAuthWarning.hidden = Boolean(session?.token);
+}
+
+function getCustomerSession() {
+  return JSON.parse(localStorage.getItem(customerSessionKey) || "null");
+}
+
+function initAccountMenu() {
+  renderAccountMenu();
+
+  accountToggle?.addEventListener("click", (event) => {
+    event.stopPropagation();
+    toggleAccountMenu();
+  });
+
+  accountMenu?.addEventListener("click", (event) => {
+    event.stopPropagation();
+  });
+
+  accountLogout?.addEventListener("click", () => {
+    localStorage.removeItem(customerSessionKey);
+    closeAccountMenu();
+    renderAccountMenu();
+    updateBookingAuthState();
+    if (bookingForm) {
+      bookingForm.elements.name.value = "";
+      bookingForm.elements.email.value = "";
+      bookingForm.elements.phone.value = "";
+    }
+  });
+
+  window.addEventListener("storage", (event) => {
+    if (event.key === customerSessionKey) {
+      renderAccountMenu();
+      fillBookingFromSession();
+      updateBookingAuthState();
+    }
+  });
+}
+
+function renderAccountMenu() {
+  const session = getCustomerSession();
+
+  if (!accountName || !accountEmail || !accountPhone || !accountRegister || !accountLogin || !accountAppointments || !accountLogout) {
+    return;
+  }
+
+  const isLogged = Boolean(session?.token);
+
+  accountName.textContent = isLogged ? session.name : "Visitante";
+  accountEmail.textContent = isLogged ? session.email : "Entre para ver seus dados";
+  accountPhone.textContent = isLogged ? session.phone || "" : "";
+  accountPhone.hidden = !isLogged || !session?.phone;
+  accountRegister.hidden = isLogged;
+  accountLogin.hidden = isLogged;
+  accountAppointments.hidden = !isLogged;
+  accountLogout.hidden = !isLogged;
+
+  if (dashboardLink) {
+    dashboardLink.hidden = session?.role !== "Admin";
+  }
+}
+
+function toggleAccountMenu() {
+  if (!accountMenu || !accountToggle) {
+    return;
+  }
+
+  const nextState = accountMenu.hidden;
+  accountMenu.hidden = !nextState;
+  accountToggle.setAttribute("aria-expanded", String(nextState));
+}
+
+function closeAccountMenu() {
+  if (!accountMenu || !accountToggle) {
+    return;
+  }
+
+  accountMenu.hidden = true;
+  accountToggle.setAttribute("aria-expanded", "false");
+}
+
 async function createApiBooking(booking) {
   try {
     const response = await fetch(`${siteConfig.apiUrl}/api/agendamentos/publico`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${getCustomerSession()?.token}`,
+      },
       body: JSON.stringify({
         customerName: booking.name,
         customerPhone: booking.phone,
@@ -444,6 +599,7 @@ applyConfig();
 updateHeaderState();
 initRevealAnimation();
 initBookingForm();
+initAccountMenu();
 
 window.addEventListener("scroll", updateHeaderState, { passive: true });
 
@@ -460,5 +616,15 @@ navLinks.forEach((link) => {
 window.addEventListener("keydown", (event) => {
   if (event.key === "Escape" && navPanel.classList.contains("is-open")) {
     closeMenu();
+  }
+
+  if (event.key === "Escape" && accountMenu && !accountMenu.hidden) {
+    closeAccountMenu();
+  }
+});
+
+document.addEventListener("click", () => {
+  if (accountMenu && !accountMenu.hidden) {
+    closeAccountMenu();
   }
 });

@@ -26,6 +26,9 @@ public class MercadoPagoService(IConfiguration configuration, IWebHostEnvironmen
         var frontendBaseUrl = configuration["MercadoPago:FrontendBaseUrl"]?.TrimEnd('/');
         var canAutoReturn = !string.IsNullOrWhiteSpace(frontendBaseUrl) &&
             frontendBaseUrl.StartsWith("https://", StringComparison.OrdinalIgnoreCase);
+        var returnBaseUrl = string.IsNullOrWhiteSpace(frontendBaseUrl)
+            ? null
+            : $"{frontendBaseUrl}/cliente.html?retorno=mercado-pago&agendamento={appointment.Id}";
 
         var request = new PreferenceRequest
         {
@@ -37,9 +40,9 @@ public class MercadoPagoService(IConfiguration configuration, IWebHostEnvironmen
                 ? null
                 : new PreferenceBackUrlsRequest
                 {
-                    Success = $"{frontendBaseUrl}/status.html?id={appointment.Id}&pagamento=sucesso",
-                    Pending = $"{frontendBaseUrl}/status.html?id={appointment.Id}&pagamento=pendente",
-                    Failure = $"{frontendBaseUrl}/status.html?id={appointment.Id}&pagamento=falha"
+                    Success = $"{returnBaseUrl}&pagamento=sucesso",
+                    Pending = $"{returnBaseUrl}&pagamento=pendente",
+                    Failure = $"{returnBaseUrl}&pagamento=falha"
                 },
             AutoReturn = canAutoReturn ? "approved" : null,
             Items =
@@ -88,5 +91,21 @@ public class MercadoPagoService(IConfiguration configuration, IWebHostEnvironmen
             : (Guid?)null;
 
         return (appointmentId, payment.Status);
+    }
+
+    public async Task<string?> RefundPaymentAsync(long paymentId, CancellationToken cancellationToken)
+    {
+        var accessToken = configuration["MercadoPago:AccessToken"];
+        if (string.IsNullOrWhiteSpace(accessToken))
+        {
+            throw new InvalidOperationException("Configure MercadoPago:AccessToken para gerar estornos.");
+        }
+
+        MercadoPagoConfig.AccessToken = accessToken;
+
+        var client = new PaymentClient();
+        var refund = await client.RefundAsync(paymentId, cancellationToken: cancellationToken);
+
+        return refund.Id?.ToString();
     }
 }

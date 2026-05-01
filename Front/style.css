@@ -150,9 +150,17 @@ select {
   font-weight: 700;
 }
 
+.nav-panel [hidden] {
+  display: none !important;
+}
+
 .nav-panel > a:not(.btn) {
   position: relative;
   padding-block: 8px;
+}
+
+.dashboard-link {
+  color: var(--gold);
 }
 
 .nav-panel > a:not(.btn)::after {
@@ -171,6 +179,101 @@ select {
 .nav-panel > a:hover::after,
 .nav-panel > a:focus-visible::after {
   transform: scaleX(1);
+}
+
+.nav-account {
+  position: relative;
+  flex: 0 0 auto;
+}
+
+.account-toggle {
+  display: grid;
+  place-items: center;
+  width: 46px;
+  height: 46px;
+  border: 1px solid rgba(201, 164, 95, 0.45);
+  border-radius: var(--radius);
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--white);
+  cursor: pointer;
+  transition: transform 220ms ease, border-color 220ms ease, background 220ms ease, color 220ms ease;
+}
+
+.account-toggle:hover,
+.account-toggle:focus-visible,
+.account-toggle[aria-expanded="true"] {
+  border-color: var(--gold);
+  background: rgba(201, 164, 95, 0.13);
+  color: var(--gold);
+  transform: translateY(-1px);
+}
+
+.account-toggle svg {
+  width: 23px;
+  height: 23px;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.9;
+}
+
+.account-menu {
+  position: absolute;
+  top: calc(100% + 14px);
+  right: 0;
+  display: grid;
+  gap: 10px;
+  width: min(290px, calc(100vw - 28px));
+  border: 1px solid rgba(201, 164, 95, 0.2);
+  border-radius: var(--radius);
+  padding: 18px;
+  background: rgba(13, 14, 17, 0.98);
+  box-shadow: var(--shadow);
+  color: var(--white);
+}
+
+.account-menu[hidden] {
+  display: none;
+}
+
+.account-menu [hidden] {
+  display: none !important;
+}
+
+.account-menu::before {
+  position: absolute;
+  top: -7px;
+  right: 17px;
+  width: 12px;
+  height: 12px;
+  border-top: 1px solid rgba(201, 164, 95, 0.2);
+  border-left: 1px solid rgba(201, 164, 95, 0.2);
+  background: rgba(13, 14, 17, 0.98);
+  content: "";
+  transform: rotate(45deg);
+}
+
+.account-menu .eyebrow {
+  margin: 0;
+}
+
+.account-menu strong {
+  font-size: 18px;
+  line-height: 1.15;
+}
+
+.account-menu span {
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+.account-menu .btn {
+  width: 100%;
+  min-height: 46px;
+  font-size: 14px;
 }
 
 .menu-toggle {
@@ -867,6 +970,24 @@ h3 {
   font-weight: 800;
 }
 
+.booking-auth-warning {
+  border: 1px solid rgba(201, 164, 95, 0.4);
+  border-radius: var(--radius);
+  padding: 13px 14px;
+  background: rgba(201, 164, 95, 0.12);
+  color: var(--paper);
+  font-size: 14px;
+  font-weight: 800;
+}
+
+.booking-auth-warning a {
+  display: inline-flex;
+  margin-left: 6px;
+  color: var(--gold);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
 .final-cta {
   padding: 96px 0;
   background:
@@ -962,6 +1083,12 @@ h3 {
 @media (max-width: 1040px) {
   .menu-toggle {
     display: block;
+    order: 3;
+  }
+
+  .nav-account {
+    margin-left: auto;
+    order: 2;
   }
 
   .nav-panel {
@@ -996,6 +1123,11 @@ h3 {
   .nav-panel .btn {
     margin-top: 18px;
     border-bottom: 0;
+  }
+
+  .account-menu {
+    top: calc(100% + 12px);
+    right: -54px;
   }
 
   .split-grid,
@@ -1037,6 +1169,24 @@ h3 {
   .nav-panel {
     top: 72px;
     max-height: calc(100svh - 72px);
+  }
+
+  .account-toggle {
+    width: 42px;
+    height: 42px;
+  }
+
+  .account-menu {
+    position: fixed;
+    top: 76px;
+    right: 14px;
+    left: 14px;
+    width: auto;
+    padding: 18px;
+  }
+
+  .account-menu::before {
+    right: 24px;
   }
 
   .hero {

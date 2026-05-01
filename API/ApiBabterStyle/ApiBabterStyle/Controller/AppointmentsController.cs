@@ -14,7 +14,6 @@ namespace ApiBabterStyle.Controller;
 public class AppointmentsController(BarberShopDbContext db, MercadoPagoService mercadoPagoService) : ControllerBase
 {
     [HttpPost("publico")]
-    [AllowAnonymous]
     public async Task<ActionResult<PublicAppointmentResponse>> CreatePublic(PublicAppointmentRequest request, CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(request.CustomerName) || string.IsNullOrWhiteSpace(request.CustomerPhone))
@@ -60,27 +59,15 @@ public class AppointmentsController(BarberShopDbContext db, MercadoPagoService m
             return Conflict(new { message = "Este barbeiro ja possui um agendamento nesse horario." });
         }
 
-        var email = string.IsNullOrWhiteSpace(request.CustomerEmail)
-            ? $"cliente-{Guid.NewGuid():N}@barberstyle.local"
-            : request.CustomerEmail.Trim().ToLowerInvariant();
-
-        var user = await db.Users.FirstOrDefaultAsync(item => item.Email == email, cancellationToken);
+        var userId = User.GetUserId();
+        var user = await db.Users.FirstOrDefaultAsync(item => item.Id == userId, cancellationToken);
         if (user is null)
         {
-            user = new User
-            {
-                Name = request.CustomerName.Trim(),
-                Email = email,
-                Phone = request.CustomerPhone.Trim(),
-                PasswordHash = BCrypt.Net.BCrypt.HashPassword(Guid.NewGuid().ToString("N"))
-            };
-            db.Users.Add(user);
+            return Unauthorized(new { message = "Faca login para criar um agendamento." });
         }
-        else
-        {
-            user.Name = request.CustomerName.Trim();
-            user.Phone = request.CustomerPhone.Trim();
-        }
+
+        user.Name = request.CustomerName.Trim();
+        user.Phone = request.CustomerPhone.Trim();
 
         var appointment = new Appointment
         {
@@ -92,6 +79,7 @@ public class AppointmentsController(BarberShopDbContext db, MercadoPagoService m
             ServiceId = service.Id,
             ScheduledAt = scheduledAt,
             Notes = BuildPublicNotes(request),
+            Status = request.PayOnline ? AppointmentStatus.WaitingPayment : AppointmentStatus.Scheduled,
             PaymentStatus = request.PayOnline ? PaymentStatus.WaitingMercadoPago : PaymentStatus.Pending
         };
 
@@ -109,11 +97,15 @@ public class AppointmentsController(BarberShopDbContext db, MercadoPagoService m
             }
             catch (InvalidOperationException ex)
             {
+                db.Appointments.Remove(appointment);
+                await db.SaveChangesAsync(cancellationToken);
                 return BadRequest(new { message = ex.Message, appointmentId = appointment.Id });
             }
             catch (Exception ex)
             {
-                return BadRequest(new { message = $"Nao foi possivel gerar o checkout do Mercado Pago: {ex.Message}", appointmentId = appointment.Id });
+                db.Appointments.Remove(appointment);
+                await db.SaveChangesAsync(cancellationToken);
+                return BadRequest(new { message = BuildMercadoPagoErrorMessage(ex), appointmentId = appointment.Id });
             }
         }
 
@@ -224,6 +216,8 @@ public class AppointmentsController(BarberShopDbContext db, MercadoPagoService m
             ServiceId = service.Id,
             ScheduledAt = scheduledAt,
             Notes = request.Notes?.Trim() ?? string.Empty,
+            Status = request.CreatePayment ? AppointmentStatus.WaitingPayment : AppointmentStatus.Scheduled,
+            PaymentStatus = request.CreatePayment ? PaymentStatus.WaitingMercadoPago : PaymentStatus.Pending,
             Barber = barber,
             Service = service,
             User = await db.Users.FindAsync([userId], cancellationToken)
@@ -244,6 +238,8 @@ public class AppointmentsController(BarberShopDbContext db, MercadoPagoService m
             }
             catch (InvalidOperationException ex)
             {
+                db.Appointments.Remove(appointment);
+                await db.SaveChangesAsync(cancellationToken);
                 return BadRequest(new { message = ex.Message, appointmentId = appointment.Id });
             }
         }
@@ -265,10 +261,56 @@ public class AppointmentsController(BarberShopDbContext db, MercadoPagoService m
             return NotFound(new { message = "Agendamento nao encontrado." });
         }
 
-        appointment.Status = AppointmentStatus.Cancelled;
-        appointment.PaymentStatus = appointment.PaymentStatus == PaymentStatus.Paid
-            ? appointment.PaymentStatus
-            : PaymentStatus.Cancelled;
+        var validation = await CancelWithRefundAsync(appointment, cancellationToken);
+        if (validation is not null)
+        {
+            return validation;
+        }
+
+        await db.SaveChangesAsync(cancellationToken);
+
+        return Ok(ToResponse(appointment));
+    }
+
+    [HttpPatch("{id:guid}/remarcar")]
+    public async Task<ActionResult<AppointmentResponse>> Reschedule(Guid id, RescheduleAppointmentRequest request, CancellationToken cancellationToken)
+    {
+        var userId = User.GetUserId();
+        var scheduledAt = NormalizeScheduledAt(request.ScheduledAt);
+
+        if (scheduledAt <= DateTime.UtcNow)
+        {
+            return BadRequest(new { message = "Escolha uma data e horario no futuro." });
+        }
+
+        var appointment = await db.Appointments
+            .Include(item => item.Barber)
+            .Include(item => item.Service)
+            .FirstOrDefaultAsync(item => item.Id == id && item.UserId == userId, cancellationToken);
+
+        if (appointment is null)
+        {
+            return NotFound(new { message = "Agendamento nao encontrado." });
+        }
+
+        if (appointment.Status == AppointmentStatus.Cancelled)
+        {
+            return BadRequest(new { message = "Nao e possivel remarcar um agendamento cancelado." });
+        }
+
+        var isBusy = await db.Appointments.AnyAsync(item =>
+            item.Id != id &&
+            item.BarberId == appointment.BarberId &&
+            item.ScheduledAt == scheduledAt &&
+            item.Status != AppointmentStatus.Cancelled,
+            cancellationToken);
+
+        if (isBusy)
+        {
+            return Conflict(new { message = "Este barbeiro ja possui um agendamento nesse horario." });
+        }
+
+        appointment.ScheduledAt = scheduledAt;
         await db.SaveChangesAsync(cancellationToken);
 
         return Ok(ToResponse(appointment));
@@ -290,9 +332,17 @@ public class AppointmentsController(BarberShopDbContext db, MercadoPagoService m
         }
 
         appointment.Status = status;
-        if (status == AppointmentStatus.Cancelled && appointment.PaymentStatus != PaymentStatus.Paid)
+        if (status == AppointmentStatus.Cancelled)
         {
-            appointment.PaymentStatus = PaymentStatus.Cancelled;
+            var validation = await CancelWithRefundAsync(appointment, cancellationToken);
+            if (validation is not null)
+            {
+                return validation;
+            }
+        }
+        else
+        {
+            appointment.Status = status;
         }
 
         await db.SaveChangesAsync(cancellationToken);
@@ -308,6 +358,11 @@ public class AppointmentsController(BarberShopDbContext db, MercadoPagoService m
         if (appointment is null)
         {
             return NotFound(new { message = "Agendamento nao encontrado." });
+        }
+
+        if (appointment.PaymentStatus == PaymentStatus.Paid)
+        {
+            return BadRequest(new { message = "Agendamento pago nao pode ser excluido diretamente. Cancele primeiro para aplicar a regra de estorno." });
         }
 
         db.Appointments.Remove(appointment);
@@ -382,5 +437,59 @@ public class AppointmentsController(BarberShopDbContext db, MercadoPagoService m
             appointment.MercadoPagoInitPoint,
             appointment.Notes,
             appointment.CreatedAt);
+    }
+
+    private async Task<ActionResult?> CancelWithRefundAsync(Appointment appointment, CancellationToken cancellationToken)
+    {
+        if (appointment.Status == AppointmentStatus.Cancelled)
+        {
+            return BadRequest(new { message = "Este agendamento ja esta cancelado." });
+        }
+
+        if (appointment.PaymentStatus == PaymentStatus.Paid)
+        {
+            var now = DateTime.UtcNow;
+            var refundLimit = appointment.ScheduledAt.AddHours(-2);
+
+            if (now > refundLimit)
+            {
+                return BadRequest(new { message = "Estorno indisponivel. O cancelamento com estorno so pode ser feito ate 2 horas antes do horario agendado." });
+            }
+
+            if (now >= appointment.ScheduledAt)
+            {
+                return BadRequest(new { message = "Estorno indisponivel depois do horario agendado." });
+            }
+
+            if (!long.TryParse(appointment.MercadoPagoPaymentId, out var paymentId))
+            {
+                return BadRequest(new { message = "Nao foi possivel estornar automaticamente porque o pagamento do Mercado Pago nao esta vinculado ao agendamento." });
+            }
+
+            try
+            {
+                appointment.MercadoPagoRefundId = await mercadoPagoService.RefundPaymentAsync(paymentId, cancellationToken);
+                appointment.PaymentStatus = PaymentStatus.Refunded;
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(new { message = $"Nao foi possivel realizar o estorno no Mercado Pago: {ex.Message}" });
+            }
+        }
+        else
+        {
+            appointment.PaymentStatus = PaymentStatus.Cancelled;
+        }
+
+        appointment.Status = AppointmentStatus.Cancelled;
+        return null;
+    }
+
+    private static string BuildMercadoPagoErrorMessage(Exception exception)
+    {
+        return exception.Message.Contains("invalid access token", StringComparison.OrdinalIgnoreCase) ||
+               exception.Message.Contains("401", StringComparison.OrdinalIgnoreCase)
+            ? "Token de acesso do Mercado Pago invalido. Configure um Access Token valido em MercadoPago:AccessToken e reinicie a API."
+            : $"Nao foi possivel gerar o checkout do Mercado Pago: {exception.Message}";
     }
 }

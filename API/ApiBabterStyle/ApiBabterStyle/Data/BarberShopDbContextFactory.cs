@@ -18,12 +18,21 @@ public class BarberShopDbContextFactory : IDesignTimeDbContextFactory<BarberShop
 
         if (string.IsNullOrWhiteSpace(connectionString))
         {
-            connectionString = "Host=localhost;Database=barberstyle;Username=postgres;Password=postgres";
+            connectionString = "Data Source=barberstyle-dev.db";
         }
 
-        var options = new DbContextOptionsBuilder<BarberShopDbContext>()
-            .UseNpgsql(connectionString)
-            .Options;
+        var builder = new DbContextOptionsBuilder<BarberShopDbContext>();
+        if (connectionString.Contains("Data Source=", StringComparison.OrdinalIgnoreCase) ||
+            connectionString.EndsWith(".db", StringComparison.OrdinalIgnoreCase))
+        {
+            builder.UseSqlite(connectionString);
+        }
+        else
+        {
+            builder.UseNpgsql(connectionString);
+        }
+
+        var options = builder.Options;
 
         return new BarberShopDbContext(options);
     }

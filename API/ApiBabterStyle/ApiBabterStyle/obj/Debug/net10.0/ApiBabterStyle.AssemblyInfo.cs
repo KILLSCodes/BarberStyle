@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("ApiBabterStyle")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+0e5655c5bd88ae3c15657a89d65ea81b77200d21")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+5083631bb56d7837bfa43bfeee4f0a646d705d5c")]
 [assembly: System.Reflection.AssemblyProductAttribute("ApiBabterStyle")]
 [assembly: System.Reflection.AssemblyTitleAttribute("ApiBabterStyle")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]

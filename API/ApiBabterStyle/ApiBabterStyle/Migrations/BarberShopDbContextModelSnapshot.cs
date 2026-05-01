@@ -37,7 +37,13 @@ namespace ApiBabterStyle.Migrations
                     b.Property<string>("MercadoPagoInitPoint")
                         .HasColumnType("text");
 
+                    b.Property<string>("MercadoPagoPaymentId")
+                        .HasColumnType("text");
+
                     b.Property<string>("MercadoPagoPreferenceId")
+                        .HasColumnType("text");
+
+                    b.Property<string>("MercadoPagoRefundId")
                         .HasColumnType("text");
 
                     b.Property<string>("Notes")
@@ -105,6 +111,27 @@ namespace ApiBabterStyle.Migrations
                             Active = true,
                             Name = "Rafael Santos",
                             Specialty = "Barba, navalha e sobrancelha"
+                        },
+                        new
+                        {
+                            Id = new Guid("7ba716f3-2170-46d2-bb4e-bf6c983cfead"),
+                            Active = true,
+                            Name = "Ton Barber",
+                            Specialty = "Corte masculino premium"
+                        },
+                        new
+                        {
+                            Id = new Guid("4c6f1905-a984-49f1-9129-c7b7c5c5eaf2"),
+                            Active = true,
+                            Name = "Michael Trindade",
+                            Specialty = "Corte, barba e degradê"
+                        },
+                        new
+                        {
+                            Id = new Guid("75624c38-17fd-4720-8670-42a7a59f32db"),
+                            Active = true,
+                            Name = "Valdir Bispo",
+                            Specialty = "Barba, navalha e finalização"
                         });
                 });
 
@@ -163,6 +190,33 @@ namespace ApiBabterStyle.Migrations
                             DurationMinutes = 75,
                             Name = "Corte + Barba",
                             Price = 75m
+                        },
+                        new
+                        {
+                            Id = new Guid("714f2a9f-f890-4592-bf37-56b3f5b913ef"),
+                            Active = true,
+                            Description = "Design discreto e natural",
+                            DurationMinutes = 20,
+                            Name = "Sobrancelha",
+                            Price = 25m
+                        },
+                        new
+                        {
+                            Id = new Guid("f054bf3c-27c3-4374-b8c7-79acc4403590"),
+                            Active = true,
+                            Description = "Hidratacao e detox capilar",
+                            DurationMinutes = 50,
+                            Name = "Tratamento capilar",
+                            Price = 85m
+                        },
+                        new
+                        {
+                            Id = new Guid("fe8385e9-0377-4907-9a8f-707e6d4a79f6"),
+                            Active = true,
+                            Description = "Experiencia reservada com cabelo, barba e acabamento",
+                            DurationMinutes = 120,
+                            Name = "Dia do noivo / experiencia premium",
+                            Price = 240m
                         });
                 });
 

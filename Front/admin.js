@@ -1,6 +1,7 @@
 const bookingStorageKey = "barberstyle_bookings";
 const servicesStorageKey = "barberstyle_services";
 const scheduleStorageKey = "barberstyle_schedule";
+const sessionStorageKey = "barberstyle_customer_session";
 
 const defaultServices = [
   { id: "corte", name: "Corte masculino", description: "Corte completo", price: 65, duration: 45, active: true },
@@ -31,10 +32,13 @@ const scheduleForm = document.querySelector("[data-schedule-form]");
 const scheduleList = document.querySelector("[data-schedule-list]");
 const apiLoginForm = document.querySelector("[data-api-login]");
 const apiMessage = document.querySelector("[data-api-message]");
+const serviceMessage = document.querySelector("[data-service-message]");
 
 let bookings = load(bookingStorageKey, []);
 let services = load(servicesStorageKey, defaultServices);
 let schedule = load(scheduleStorageKey, defaultSchedule);
+let adminApiUrl = "";
+let adminToken = "";
 
 const today = getTodayDate();
 dateFilter.value = today;
@@ -44,6 +48,8 @@ document.querySelector("[data-current-date]").textContent = new Intl.DateTimeFor
   day: "2-digit",
   month: "long",
 }).format(new Date());
+
+initAdminSession();
 
 function load(key, fallback) {
   return JSON.parse(localStorage.getItem(key) || JSON.stringify(fallback));
@@ -61,6 +67,7 @@ function normalizeStatus(status) {
     Cancelled: "Cancelado",
     Completed: "Concluido",
     Pending: "Pendente",
+    WaitingPayment: "Aguardando pagamento",
   };
 
   return map[status] || status || "Pendente";
@@ -73,6 +80,7 @@ function normalizePaymentStatus(status) {
     WaitingMercadoPago: "Aguardando Mercado Pago",
     Cancelled: "Pagamento cancelado",
     Failed: "Pagamento recusado",
+    Refunded: "Estornado",
   };
 
   return map[status] || status || "Pagamento presencial pendente";
@@ -97,6 +105,59 @@ function normalizeApiAppointment(appointment) {
     status: normalizeStatus(appointment.status),
     createdAt: appointment.createdAt,
   };
+}
+
+function normalizeApiService(service) {
+  return {
+    id: service.id,
+    name: service.name,
+    description: service.description || "",
+    price: Number(service.price || 0),
+    duration: Number(service.durationMinutes || service.duration || 0),
+    active: service.active !== false,
+  };
+}
+
+async function initAdminSession() {
+  const session = JSON.parse(localStorage.getItem(sessionStorageKey) || "null");
+  if (session?.role !== "Admin" || !session.token) {
+    return;
+  }
+
+  adminApiUrl = "";
+  adminToken = session.token;
+  apiMessage.textContent = "Conectando com a sessao do proprietario...";
+  try {
+    await loadApiDashboardData();
+  } catch (error) {
+    apiMessage.textContent = `${error.message} Entre novamente como proprietario ou use o formulario de API abaixo.`;
+  }
+}
+
+async function loadApiDashboardData() {
+  const appointmentResponse = await fetch(`${adminApiUrl}/api/agendamentos/admin`, {
+    headers: { Authorization: `Bearer ${adminToken}` },
+  });
+  const payload = await appointmentResponse.json().catch(() => null);
+
+  if (!appointmentResponse.ok) {
+    throw new Error(payload?.message || "Nao foi possivel carregar os agendamentos.");
+  }
+
+  bookings = payload.map(normalizeApiAppointment);
+
+  const servicesResponse = await fetch(`${adminApiUrl}/api/servicos/admin`, {
+    headers: { Authorization: `Bearer ${adminToken}` },
+  });
+  const servicesPayload = await servicesResponse.json().catch(() => null);
+
+  if (servicesResponse.ok && Array.isArray(servicesPayload)) {
+    services = servicesPayload.map(normalizeApiService);
+  }
+
+  persist();
+  render();
+  apiMessage.textContent = "Agenda e servicos carregados da API com sucesso.";
 }
 
 function getFilteredBookings() {
@@ -307,12 +368,17 @@ function exportCsv() {
   URL.revokeObjectURL(url);
 }
 
-table.addEventListener("click", (event) => {
+table.addEventListener("click", async (event) => {
   const actionButton = event.target.closest("button[data-action]");
   const paymentButton = event.target.closest("button[data-payment]");
   const deleteButton = event.target.closest("button[data-delete]");
 
   if (actionButton) {
+    if (adminToken) {
+      await updateApiAppointmentStatus(actionButton.dataset.id, actionButton.dataset.action);
+      return;
+    }
+
     bookings = bookings.map((booking) => (
       booking.id === actionButton.dataset.id ? { ...booking, status: actionButton.dataset.action } : booking
     ));
@@ -325,6 +391,11 @@ table.addEventListener("click", (event) => {
   }
 
   if (deleteButton) {
+    if (adminToken) {
+      await deleteApiAppointment(deleteButton.dataset.id);
+      return;
+    }
+
     const ok = window.confirm("Excluir este agendamento do dashboard? Esta acao remove o registro local.");
     if (!ok) {
       return;
@@ -336,6 +407,56 @@ table.addEventListener("click", (event) => {
   persist();
   render();
 });
+
+async function updateApiAppointmentStatus(id, status) {
+  const apiStatus = {
+    Confirmado: "Scheduled",
+    Concluido: "Completed",
+    Cancelado: "Cancelled",
+  }[status] || status;
+
+  try {
+    const response = await fetch(`${adminApiUrl}/api/agendamentos/admin/${id}/status?status=${apiStatus}`, {
+      method: "PATCH",
+      headers: { Authorization: `Bearer ${adminToken}` },
+    });
+    const payload = await response.json().catch(() => null);
+
+    if (!response.ok) {
+      throw new Error(payload?.message || "Nao foi possivel atualizar o agendamento.");
+    }
+
+    bookings = bookings.map((booking) => (
+      booking.id === id ? normalizeApiAppointment(payload) : booking
+    ));
+    persist();
+    render();
+    apiMessage.textContent = "Agendamento atualizado com sucesso.";
+  } catch (error) {
+    apiMessage.textContent = error.message;
+  }
+}
+
+async function deleteApiAppointment(id) {
+  try {
+    const response = await fetch(`${adminApiUrl}/api/agendamentos/admin/${id}`, {
+      method: "DELETE",
+      headers: { Authorization: `Bearer ${adminToken}` },
+    });
+    const payload = await response.json().catch(() => null);
+
+    if (!response.ok) {
+      throw new Error(payload?.message || "Nao foi possivel excluir o agendamento.");
+    }
+
+    bookings = bookings.filter((booking) => booking.id !== id);
+    persist();
+    render();
+    apiMessage.textContent = "Agendamento excluido com sucesso.";
+  } catch (error) {
+    apiMessage.textContent = error.message;
+  }
+}
 
 [searchInput, dateFilter, statusFilter, logDateInput].forEach((input) => {
   input.addEventListener("input", render);
@@ -362,7 +483,7 @@ clearDayButton.addEventListener("click", () => {
 
 exportButton.addEventListener("click", exportCsv);
 
-serviceForm.addEventListener("submit", (event) => {
+serviceForm.addEventListener("submit", async (event) => {
   event.preventDefault();
   const data = new FormData(serviceForm);
   const id = data.get("id") || `service-${Date.now()}`;
@@ -375,15 +496,67 @@ serviceForm.addEventListener("submit", (event) => {
     active: data.get("active") === "on",
   };
 
-  services = services.some((service) => service.id === id)
-    ? services.map((service) => (service.id === id ? payload : service))
-    : [...services, payload];
+  if (adminToken) {
+    await saveApiService(id, payload);
+    return;
+  }
 
-  serviceForm.reset();
-  serviceForm.elements.active.checked = true;
-  persist();
-  render();
+  apiMessage.textContent = "Entre como proprietario para salvar servicos no banco de dados.";
+  serviceMessage.textContent = "Entre como proprietario para salvar servicos no banco de dados.";
 });
+
+async function saveApiService(id, payload) {
+  const isExisting = services.some((service) => service.id === id);
+  const url = isExisting
+    ? `${adminApiUrl}/api/servicos/admin/${id}`
+    : `${adminApiUrl}/api/servicos/admin`;
+  const requestBody = isExisting
+    ? {
+        name: payload.name,
+        description: payload.description,
+        price: payload.price,
+        durationMinutes: payload.duration,
+        active: payload.active,
+      }
+    : {
+        name: payload.name,
+        description: payload.description,
+        price: payload.price,
+        durationMinutes: payload.duration,
+      };
+
+  try {
+    const response = await fetch(url, {
+      method: isExisting ? "PUT" : "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${adminToken}`,
+      },
+      body: JSON.stringify(requestBody),
+    });
+    const result = response.status === 204 ? null : await response.json().catch(() => null);
+
+    if (!response.ok) {
+      throw new Error(result?.message || "Nao foi possivel salvar o servico na API.");
+    }
+
+    if (isExisting) {
+      services = services.map((service) => (service.id === id ? payload : service));
+    } else {
+      services = [...services, normalizeApiService(result)];
+    }
+
+    serviceForm.reset();
+    serviceForm.elements.active.checked = true;
+    persist();
+    render();
+    apiMessage.textContent = "Servico salvo na API e disponivel para agendamento.";
+    serviceMessage.textContent = "Servico salvo na API e disponivel para agendamento.";
+  } catch (error) {
+    apiMessage.textContent = error.message;
+    serviceMessage.textContent = error.message;
+  }
+}
 
 serviceList.addEventListener("click", (event) => {
   const editButton = event.target.closest("[data-edit-service]");
@@ -405,11 +578,40 @@ serviceList.addEventListener("click", (event) => {
       return;
     }
 
-    services = services.filter((service) => service.id !== removeButton.dataset.removeService);
-    persist();
-    render();
+    if (adminToken) {
+      removeApiService(removeButton.dataset.removeService);
+      return;
+    }
+
+    apiMessage.textContent = "Entre como proprietario para excluir servicos do banco de dados.";
+    serviceMessage.textContent = "Entre como proprietario para excluir servicos do banco de dados.";
   }
 });
+
+async function removeApiService(id) {
+  try {
+    const response = await fetch(`${adminApiUrl}/api/servicos/admin/${id}`, {
+      method: "DELETE",
+      headers: { Authorization: `Bearer ${adminToken}` },
+    });
+    const payload = await response.json().catch(() => null);
+
+    if (!response.ok) {
+      throw new Error(payload?.message || "Nao foi possivel excluir o servico na API.");
+    }
+
+    services = services.map((service) => (
+      service.id === id ? { ...service, active: false } : service
+    ));
+    persist();
+    render();
+    apiMessage.textContent = "Servico removido da lista publica.";
+    serviceMessage.textContent = "Servico removido da lista publica.";
+  } catch (error) {
+    apiMessage.textContent = error.message;
+    serviceMessage.textContent = error.message;
+  }
+}
 
 scheduleForm.addEventListener("submit", (event) => {
   event.preventDefault();
@@ -457,19 +659,10 @@ apiLoginForm.addEventListener("submit", async (event) => {
       throw new Error(auth.message || "Login administrativo invalido.");
     }
 
-    const appointmentResponse = await fetch(`${apiUrl}/api/agendamentos/admin`, {
-      headers: { Authorization: `Bearer ${auth.token}` },
-    });
-    const payload = await appointmentResponse.json();
+    adminApiUrl = apiUrl;
+    adminToken = auth.token;
 
-    if (!appointmentResponse.ok) {
-      throw new Error(payload.message || "Nao foi possivel carregar os agendamentos.");
-    }
-
-    bookings = payload.map(normalizeApiAppointment);
-    persist();
-    render();
-    apiMessage.textContent = "Agenda carregada da API com sucesso.";
+    await loadApiDashboardData();
   } catch (error) {
     apiMessage.textContent = error.message;
   }

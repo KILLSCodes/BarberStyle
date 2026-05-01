@@ -10,7 +10,7 @@ public static class DatabaseSeeder
         using var scope = services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<BarberShopDbContext>();
 
-        if (db.Database.IsRelational())
+        if (db.Database.IsRelational() && db.Database.ProviderName != "Microsoft.EntityFrameworkCore.Sqlite")
         {
             await db.Database.MigrateAsync();
             await SeedAdminUserAsync(scope.ServiceProvider, db);
@@ -18,6 +18,7 @@ public static class DatabaseSeeder
         }
 
         await db.Database.EnsureCreatedAsync();
+        await EnsureSqliteAppointmentColumnsAsync(db);
 
         if (!await db.Barbers.AnyAsync())
         {
@@ -36,6 +37,28 @@ public static class DatabaseSeeder
 
         await db.SaveChangesAsync();
         await SeedAdminUserAsync(scope.ServiceProvider, db);
+    }
+
+    private static async Task EnsureSqliteAppointmentColumnsAsync(BarberShopDbContext db)
+    {
+        if (db.Database.ProviderName != "Microsoft.EntityFrameworkCore.Sqlite")
+        {
+            return;
+        }
+
+        var columns = await db.Database
+            .SqlQueryRaw<string>("SELECT name AS Value FROM pragma_table_info('Appointments')")
+            .ToListAsync();
+
+        if (!columns.Contains("MercadoPagoPaymentId"))
+        {
+            await db.Database.ExecuteSqlRawAsync("ALTER TABLE Appointments ADD COLUMN MercadoPagoPaymentId TEXT NULL");
+        }
+
+        if (!columns.Contains("MercadoPagoRefundId"))
+        {
+            await db.Database.ExecuteSqlRawAsync("ALTER TABLE Appointments ADD COLUMN MercadoPagoRefundId TEXT NULL");
+        }
     }
 
     private static async Task SeedAdminUserAsync(IServiceProvider services, BarberShopDbContext db)

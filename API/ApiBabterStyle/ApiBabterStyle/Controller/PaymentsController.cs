@@ -11,7 +11,10 @@ namespace ApiBabterStyle.Controller;
 
 [ApiController]
 [Route("api/pagamentos/mercado-pago")]
-public class PaymentsController(BarberShopDbContext db, MercadoPagoService mercadoPagoService) : ControllerBase
+public class PaymentsController(
+    BarberShopDbContext db,
+    MercadoPagoService mercadoPagoService,
+    IWebHostEnvironment environment) : ControllerBase
 {
     [Authorize]
     [HttpPost("preferencia")]
@@ -45,6 +48,10 @@ public class PaymentsController(BarberShopDbContext db, MercadoPagoService merca
         {
             return BadRequest(new { message = ex.Message });
         }
+        catch (Exception ex)
+        {
+            return BadRequest(new { message = BuildMercadoPagoErrorMessage(ex) });
+        }
 
         appointment.MercadoPagoPreferenceId = preference.PreferenceId;
         appointment.MercadoPagoInitPoint = preference.CheckoutUrl;
@@ -56,6 +63,63 @@ public class PaymentsController(BarberShopDbContext db, MercadoPagoService merca
             appointment.MercadoPagoPreferenceId,
             appointment.MercadoPagoInitPoint,
             appointment.PaymentStatus));
+    }
+
+    [Authorize]
+    [HttpPost("retorno")]
+    public async Task<ActionResult<MercadoPagoReturnResponse>> ProcessReturn(
+        MercadoPagoReturnRequest request,
+        CancellationToken cancellationToken)
+    {
+        var userId = User.GetUserId();
+        var appointment = await db.Appointments
+            .FirstOrDefaultAsync(item => item.Id == request.AppointmentId && item.UserId == userId, cancellationToken);
+
+        if (appointment is null)
+        {
+            return NotFound(new { message = "Agendamento nao encontrado." });
+        }
+
+        var normalizedStatus = request.Status?.Trim().ToLowerInvariant();
+        var verifiedStatus = await TryVerifyPaymentStatusAsync(request.PaymentId, request.AppointmentId, cancellationToken);
+
+        if (verifiedStatus is not null)
+        {
+            normalizedStatus = verifiedStatus;
+        }
+
+        if (normalizedStatus == "approved")
+        {
+            appointment.Status = AppointmentStatus.Scheduled;
+            appointment.PaymentStatus = PaymentStatus.Paid;
+            appointment.MercadoPagoPaymentId = request.PaymentId ?? appointment.MercadoPagoPaymentId;
+        }
+        else if (normalizedStatus is "pending" or "in_process")
+        {
+            appointment.PaymentStatus = PaymentStatus.WaitingMercadoPago;
+        }
+        else if (normalizedStatus is "rejected" or "cancelled" or "failure" or "failed")
+        {
+            appointment.PaymentStatus = PaymentStatus.Failed;
+        }
+        else if (environment.IsDevelopment() && request.Status?.Equals("sucesso", StringComparison.OrdinalIgnoreCase) == true)
+        {
+            appointment.Status = AppointmentStatus.Scheduled;
+            appointment.PaymentStatus = PaymentStatus.Paid;
+            appointment.MercadoPagoPaymentId = request.PaymentId ?? appointment.MercadoPagoPaymentId;
+        }
+
+        await db.SaveChangesAsync(cancellationToken);
+
+        var message = appointment.PaymentStatus == PaymentStatus.Paid
+            ? "Pagamento confirmado. Seu agendamento esta marcado como pago."
+            : "Retorno do Mercado Pago recebido. Atualizando o status do seu agendamento.";
+
+        return Ok(new MercadoPagoReturnResponse(
+            appointment.Id,
+            appointment.Status.ToString(),
+            appointment.PaymentStatus.ToString(),
+            message));
     }
 
     [HttpPost("webhook")]
@@ -83,12 +147,25 @@ public class PaymentsController(BarberShopDbContext db, MercadoPagoService merca
             return Ok();
         }
 
-        appointment.PaymentStatus = status.ToLowerInvariant() switch
+        switch (status.ToLowerInvariant())
         {
-            "approved" => PaymentStatus.Paid,
-            "cancelled" or "rejected" => PaymentStatus.Failed,
-            _ => PaymentStatus.WaitingMercadoPago
-        };
+            case "approved":
+                appointment.Status = AppointmentStatus.Scheduled;
+                appointment.PaymentStatus = PaymentStatus.Paid;
+                appointment.MercadoPagoPaymentId = paymentId?.ToString() ?? appointment.MercadoPagoPaymentId;
+                break;
+            case "refunded":
+                appointment.PaymentStatus = PaymentStatus.Refunded;
+                break;
+            case "cancelled":
+            case "rejected":
+                appointment.PaymentStatus = PaymentStatus.Failed;
+                break;
+            default:
+                appointment.Status = AppointmentStatus.WaitingPayment;
+                appointment.PaymentStatus = PaymentStatus.WaitingMercadoPago;
+                break;
+        }
 
         await db.SaveChangesAsync(cancellationToken);
         return Ok();
@@ -118,5 +195,33 @@ public class PaymentsController(BarberShopDbContext db, MercadoPagoService merca
         }
 
         return null;
+    }
+
+    private async Task<string?> TryVerifyPaymentStatusAsync(string? paymentId, Guid appointmentId, CancellationToken cancellationToken)
+    {
+        if (!long.TryParse(paymentId, out var parsedPaymentId))
+        {
+            return null;
+        }
+
+        try
+        {
+            var payment = await mercadoPagoService.GetPaymentStatusAsync(parsedPaymentId, cancellationToken);
+            return payment.AppointmentId == appointmentId
+                ? payment.Status?.ToLowerInvariant()
+                : null;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private static string BuildMercadoPagoErrorMessage(Exception exception)
+    {
+        return exception.Message.Contains("invalid access token", StringComparison.OrdinalIgnoreCase) ||
+               exception.Message.Contains("401", StringComparison.OrdinalIgnoreCase)
+            ? "Token de acesso do Mercado Pago invalido. Configure um Access Token valido em MercadoPago:AccessToken e reinicie a API."
+            : $"Nao foi possivel gerar o checkout do Mercado Pago: {exception.Message}";
     }
 }

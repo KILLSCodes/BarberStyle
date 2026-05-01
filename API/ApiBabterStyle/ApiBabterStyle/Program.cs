@@ -26,6 +26,13 @@ builder.Services.AddDbContext<BarberShopDbContext>(options =>
         return;
     }
 
+    if (connectionString.Contains("Data Source=", StringComparison.OrdinalIgnoreCase) ||
+        connectionString.EndsWith(".db", StringComparison.OrdinalIgnoreCase))
+    {
+        options.UseSqlite(connectionString);
+        return;
+    }
+
     options.UseNpgsql(connectionString);
 });
 
@@ -38,6 +45,7 @@ var signingKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtSecret));
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>
     {
+        options.IncludeErrorDetails = builder.Environment.IsDevelopment();
         options.TokenValidationParameters = new TokenValidationParameters
         {
             ValidateIssuerSigningKey = true,
@@ -72,7 +80,10 @@ if (app.Environment.IsDevelopment())
 
 await DatabaseSeeder.SeedAsync(app.Services);
 
-app.UseHttpsRedirection();
+if (!app.Environment.IsDevelopment())
+{
+    app.UseHttpsRedirection();
+}
 app.UseCors("Frontend");
 app.UseAuthentication();
 app.UseAuthorization();

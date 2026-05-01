@@ -6,7 +6,11 @@ public record RegisterRequest(string Name, string Email, string Phone, string Pa
 
 public record LoginRequest(string Email, string Password);
 
-public record AuthResponse(Guid UserId, string Name, string Email, string Role, string Token, DateTime ExpiresAt);
+public record AuthResponse(Guid UserId, string Name, string Email, string Phone, string Role, string Token, DateTime ExpiresAt);
+
+public record CustomerProfileResponse(Guid UserId, string Name, string Email, string Phone, string Role);
+
+public record UpdateProfileRequest(string Name, string Phone, string? Password);
 
 public record BarberResponse(Guid Id, string Name, string Specialty);
 
@@ -51,6 +55,8 @@ public record CreateAppointmentRequest(
     DateTime ScheduledAt,
     string? Notes,
     bool CreatePayment = true);
+
+public record RescheduleAppointmentRequest(DateTime ScheduledAt);
 
 public record PublicAppointmentRequest(
     string CustomerName,
@@ -124,3 +130,14 @@ public record MercadoPagoPreferenceResponse(
     string? PreferenceId,
     string CheckoutUrl,
     PaymentStatus PaymentStatus);
+
+public record MercadoPagoReturnRequest(
+    Guid AppointmentId,
+    string? PaymentId,
+    string? Status);
+
+public record MercadoPagoReturnResponse(
+    Guid AppointmentId,
+    string AppointmentStatus,
+    string PaymentStatus,
+    string Message);

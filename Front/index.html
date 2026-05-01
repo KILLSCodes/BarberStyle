@@ -45,15 +45,30 @@
         </button>
 
         <div class="nav-panel" id="primary-menu" data-nav-panel>
-          <a href="#inicio">Inicio</a>
-          <a href="#sobre">Sobre</a>
+          <a class="dashboard-link" href="admin.html" data-dashboard-link hidden>Dashboard</a>
           <a href="#servicos">Servicos</a>
           <a href="#planos">Planos</a>
-          <a href="#galeria">Galeria</a>
-          <a href="#depoimentos">Depoimentos</a>
-          <a href="#agendamento">Agendamento</a>
-          <a href="#contato">Contato</a>
+          <a href="cliente.html">Meus agendamentos</a>
           <a class="btn btn-small btn-gold" href="#agendamento">Agendar horario</a>
+        </div>
+
+        <div class="nav-account">
+          <button class="account-toggle" type="button" aria-label="Abrir informacoes da conta" aria-expanded="false" data-account-toggle>
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M20 21a8 8 0 0 0-16 0" />
+              <circle cx="12" cy="7" r="4" />
+            </svg>
+          </button>
+          <div class="account-menu" data-account-menu hidden>
+            <p class="eyebrow">Conta</p>
+            <strong data-account-name>Visitante</strong>
+            <span data-account-email>Entre para ver seus dados</span>
+            <span data-account-phone></span>
+            <a class="btn btn-gold" href="cliente.html?tab=register" data-account-register>Cadastre-se</a>
+            <a class="btn btn-outline" href="cliente.html?tab=login" data-account-login>Entrar</a>
+            <a class="btn btn-gold" href="cliente.html" data-account-appointments hidden>Meus agendamentos</a>
+            <button class="btn btn-outline" type="button" data-account-logout hidden>Sair</button>
+          </div>
         </div>
       </nav>
     </header>
@@ -301,6 +316,11 @@
               <h3>Agenda BarberStyle</h3>
             </div>
 
+            <div class="booking-auth-warning" data-booking-auth-warning hidden>
+              Para agendar, entre ou crie sua conta. Assim voce acompanha, cancela ou remarca seus horarios depois.
+              <a href="cliente.html">Acessar minha conta</a>
+            </div>
+
             <div class="field-grid">
               <label>
                 Nome completo
@@ -424,6 +444,7 @@
           <a href="#planos">Planos</a>
           <a href="#galeria">Galeria</a>
           <a href="#contato">Contato</a>
+          <a href="cliente.html">Meus agendamentos</a>
           <a href="admin.html">Painel admin</a>
         </div>
       </div>
