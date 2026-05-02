@@ -23,6 +23,7 @@ body {
   color: var(--ink);
   font-family: "Manrope", Arial, sans-serif;
   line-height: 1.5;
+  overflow-x: hidden;
 }
 
 a {
@@ -130,11 +131,13 @@ select {
 .metric-card p,
 .api-panel p,
 .api-message {
+  max-width: 100%;
   color: var(--muted);
   margin: 0;
 }
 
 .dashboard {
+  min-width: 0;
   padding: 34px;
 }
 
@@ -143,6 +146,7 @@ select {
   align-items: flex-start;
   justify-content: space-between;
   gap: 22px;
+  min-width: 0;
   margin-bottom: 24px;
 }
 
@@ -164,6 +168,7 @@ h2 {
 .header-actions {
   display: flex;
   gap: 10px;
+  flex-shrink: 0;
 }
 
 .btn,
@@ -180,6 +185,8 @@ h2 {
   min-height: 44px;
   border: 1px solid transparent;
   padding: 0 16px;
+  text-align: center;
+  white-space: normal;
 }
 
 .btn-gold {
@@ -219,6 +226,7 @@ h2 {
 
 .metric-card,
 .panel {
+  min-width: 0;
   border: 1px solid var(--line);
   border-radius: var(--radius);
   background: var(--panel);
@@ -453,8 +461,13 @@ tr.is-highlighted {
   align-items: center;
   justify-content: space-between;
   gap: 18px;
+  min-width: 0;
   padding: 22px;
   border-bottom: 1px solid var(--line);
+}
+
+.panel-header > div {
+  min-width: 0;
 }
 
 .panel-header.flat {
@@ -497,7 +510,9 @@ select:focus {
 }
 
 .table-wrap {
+  max-width: 100%;
   overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
 }
 
 table {
@@ -794,13 +809,57 @@ code {
 }
 
 @media (max-width: 720px) {
+  .admin-app {
+    display: block;
+    width: 100%;
+  }
+
+  .sidebar {
+    gap: 16px;
+    padding: 16px;
+  }
+
+  .brand {
+    width: 100%;
+  }
+
+  .admin-nav {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+    margin-top: 10px;
+  }
+
+  .admin-nav a {
+    min-height: 42px;
+    padding: 10px 12px;
+    font-size: 14px;
+    text-align: center;
+  }
+
+  .sidebar-card {
+    margin-top: 2px;
+    padding: 14px;
+  }
+
+  .sidebar-card strong {
+    font-size: 22px;
+  }
+
+  .sidebar-card p {
+    font-size: 14px;
+  }
+
   .dashboard {
-    padding: 18px;
+    width: 100%;
+    padding: 18px 14px;
+    overflow: hidden;
   }
 
   .dashboard-header,
   .header-actions {
     flex-direction: column;
+    align-items: stretch;
   }
 
   .header-actions,
@@ -808,16 +867,39 @@ code {
     width: 100%;
   }
 
+  .dashboard-header {
+    gap: 16px;
+  }
+
+  h1 {
+    font-size: clamp(38px, 13vw, 52px);
+    overflow-wrap: anywhere;
+  }
+
+  h2 {
+    font-size: 29px;
+  }
+
   .metrics-grid,
   .log-grid,
   .filters,
   .agenda-board,
   .api-panel .api-login,
-  .admin-nav,
   .manager-grid,
   .form-grid,
   .schedule-form {
     grid-template-columns: 1fr;
+  }
+
+  .metrics-grid,
+  .log-grid {
+    gap: 10px;
+  }
+
+  .panel-header {
+    flex-direction: column;
+    align-items: stretch;
+    padding: 18px;
   }
 
   .quick-date-actions {
@@ -826,5 +908,62 @@ code {
 
   .quick-date-actions button {
     flex: 1;
+  }
+
+  .next-appointment,
+  .date-hint {
+    margin-inline: 14px;
+  }
+
+  .date-hint button,
+  .next-appointment button {
+    width: 100%;
+  }
+
+  .agenda-board,
+  .filters,
+  .log-grid,
+  .manager-grid,
+  .api-panel,
+  .schedule-form {
+    padding-inline: 14px;
+  }
+
+  .service-item {
+    grid-template-columns: 1fr;
+  }
+
+  .service-actions,
+  .row-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .service-actions button,
+  .row-actions button {
+    width: 100%;
+  }
+
+  .day-log .panel-header input {
+    max-width: none;
+  }
+}
+
+@media (max-width: 420px) {
+  .admin-nav {
+    grid-template-columns: 1fr;
+  }
+
+  .dashboard {
+    padding-inline: 10px;
+  }
+
+  .metric-card {
+    padding: 16px;
+  }
+
+  th,
+  td {
+    padding: 12px;
   }
 }
