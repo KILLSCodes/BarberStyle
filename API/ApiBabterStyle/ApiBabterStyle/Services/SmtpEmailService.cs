@@ -1,4 +1,5 @@
 using System.Net;
+using System.Net.Http.Json;
 using System.Net.Sockets;
 using MailKit.Net.Smtp;
 using MailKit.Security;
@@ -9,16 +10,27 @@ namespace ApiBabterStyle.Services;
 public class SmtpEmailService(IConfiguration configuration, ILogger<SmtpEmailService> logger)
 {
     public bool IsConfigured =>
-        !string.IsNullOrWhiteSpace(GetSetting("Host", "SmtpHost")) &&
+        IsEmailProxyConfigured ||
+        (!string.IsNullOrWhiteSpace(GetSetting("Host", "SmtpHost")) &&
         !string.IsNullOrWhiteSpace(GetSetting("FromEmail", "SmtpFrom")) &&
         (string.IsNullOrWhiteSpace(GetSetting("Username", "SmtpUser")) ||
-            !string.IsNullOrWhiteSpace(GetSetting("Password", "SmtpPassword")));
+            !string.IsNullOrWhiteSpace(GetSetting("Password", "SmtpPassword"))));
+
+    private bool IsEmailProxyConfigured =>
+        !string.IsNullOrWhiteSpace(configuration["EmailProxy:Url"] ?? configuration["EmailProxyUrl"]) &&
+        !string.IsNullOrWhiteSpace(configuration["EmailProxy:Secret"] ?? configuration["EmailProxySecret"]);
 
     public async Task SendPasswordResetAsync(string toEmail, string customerName, string resetUrl, CancellationToken cancellationToken)
     {
         if (!IsConfigured)
         {
             throw new InvalidOperationException("SMTP nao configurado.");
+        }
+
+        if (IsEmailProxyConfigured)
+        {
+            await SendPasswordResetByProxyAsync(toEmail, customerName, resetUrl, cancellationToken);
+            return;
         }
 
         var host = GetSetting("Host", "SmtpHost")!;
@@ -56,6 +68,38 @@ public class SmtpEmailService(IConfiguration configuration, ILogger<SmtpEmailSer
         logger.LogInformation("Enviando email de recuperacao de senha para {Email}", toEmail);
         await client.SendAsync(message, cancellationToken);
         await client.DisconnectAsync(true, cancellationToken);
+    }
+
+    private async Task SendPasswordResetByProxyAsync(string toEmail, string customerName, string resetUrl, CancellationToken cancellationToken)
+    {
+        var proxyUrl = configuration["EmailProxy:Url"] ?? configuration["EmailProxyUrl"]!;
+        var proxySecret = configuration["EmailProxy:Secret"] ?? configuration["EmailProxySecret"]!;
+
+        using var httpClient = new HttpClient
+        {
+            Timeout = TimeSpan.FromSeconds(30)
+        };
+
+        using var request = new HttpRequestMessage(HttpMethod.Post, proxyUrl)
+        {
+            Content = JsonContent.Create(new
+            {
+                toEmail,
+                customerName,
+                resetUrl
+            })
+        };
+
+        request.Headers.Add("x-email-proxy-secret", proxySecret);
+
+        using var response = await httpClient.SendAsync(request, cancellationToken);
+        if (!response.IsSuccessStatusCode)
+        {
+            var message = await response.Content.ReadAsStringAsync(cancellationToken);
+            throw new InvalidOperationException($"Proxy de email retornou {(int)response.StatusCode}: {message}");
+        }
+
+        logger.LogInformation("Email de recuperacao enviado via proxy para {Email}", toEmail);
     }
 
     private string? GetSetting(string sectionKey, string flatKey)
