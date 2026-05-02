@@ -4,7 +4,9 @@ using ApiBabterStyle.Model;
 using ApiBabterStyle.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
+using System.Data;
 
 namespace ApiBabterStyle.Controller;
 
@@ -14,6 +16,7 @@ namespace ApiBabterStyle.Controller;
 public class AppointmentsController(BarberShopDbContext db, MercadoPagoService mercadoPagoService) : ControllerBase
 {
     [HttpPost("publico")]
+    [EnableRateLimiting("write")]
     public async Task<ActionResult<PublicAppointmentResponse>> CreatePublic(PublicAppointmentRequest request, CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(request.CustomerName) || string.IsNullOrWhiteSpace(request.CustomerPhone))
@@ -30,9 +33,7 @@ public class AppointmentsController(BarberShopDbContext db, MercadoPagoService m
         var requestedService = request.ServiceName.Trim().ToLowerInvariant();
         var service = await db.Services.FirstOrDefaultAsync(item =>
             item.Active &&
-            (item.Name.ToLower() == requestedService ||
-             item.Name.ToLower().Contains(requestedService) ||
-             requestedService.Contains(item.Name.ToLower())),
+            item.Name.ToLower() == requestedService,
             cancellationToken);
         if (service is null)
         {
@@ -47,6 +48,8 @@ public class AppointmentsController(BarberShopDbContext db, MercadoPagoService m
         {
             return NotFound(new { message = "Barbeiro nao encontrado." });
         }
+
+        await using var transaction = await db.Database.BeginTransactionAsync(IsolationLevel.Serializable, cancellationToken);
 
         var isBusy = await db.Appointments.AnyAsync(appointment =>
             appointment.BarberId == barber.Id &&
@@ -84,7 +87,15 @@ public class AppointmentsController(BarberShopDbContext db, MercadoPagoService m
         };
 
         db.Appointments.Add(appointment);
-        await db.SaveChangesAsync(cancellationToken);
+        try
+        {
+            await db.SaveChangesAsync(cancellationToken);
+            await transaction.CommitAsync(cancellationToken);
+        }
+        catch (DbUpdateException)
+        {
+            return Conflict(new { message = "Este barbeiro ja possui um agendamento nesse horario." });
+        }
 
         if (request.PayOnline)
         {
@@ -118,6 +129,7 @@ public class AppointmentsController(BarberShopDbContext db, MercadoPagoService m
 
     [HttpGet("publico/{id:guid}")]
     [AllowAnonymous]
+    [EnableRateLimiting("public-read")]
     public async Task<ActionResult<PublicAppointmentStatusResponse>> GetPublicStatus(Guid id, CancellationToken cancellationToken)
     {
         var appointment = await db.Appointments
@@ -176,6 +188,7 @@ public class AppointmentsController(BarberShopDbContext db, MercadoPagoService m
     }
 
     [HttpPost]
+    [EnableRateLimiting("write")]
     public async Task<ActionResult<AppointmentResponse>> Create(CreateAppointmentRequest request, CancellationToken cancellationToken)
     {
         var userId = User.GetUserId();
@@ -197,6 +210,8 @@ public class AppointmentsController(BarberShopDbContext db, MercadoPagoService m
         {
             return NotFound(new { message = "Servico nao encontrado." });
         }
+
+        await using var transaction = await db.Database.BeginTransactionAsync(IsolationLevel.Serializable, cancellationToken);
 
         var isBusy = await db.Appointments.AnyAsync(appointment =>
             appointment.BarberId == request.BarberId &&
@@ -224,7 +239,15 @@ public class AppointmentsController(BarberShopDbContext db, MercadoPagoService m
         };
 
         db.Appointments.Add(appointment);
-        await db.SaveChangesAsync(cancellationToken);
+        try
+        {
+            await db.SaveChangesAsync(cancellationToken);
+            await transaction.CommitAsync(cancellationToken);
+        }
+        catch (DbUpdateException)
+        {
+            return Conflict(new { message = "Este barbeiro ja possui um agendamento nesse horario." });
+        }
 
         if (request.CreatePayment)
         {
@@ -248,6 +271,7 @@ public class AppointmentsController(BarberShopDbContext db, MercadoPagoService m
     }
 
     [HttpPatch("{id:guid}/cancelar")]
+    [EnableRateLimiting("write")]
     public async Task<ActionResult<AppointmentResponse>> Cancel(Guid id, CancellationToken cancellationToken)
     {
         var userId = User.GetUserId();
@@ -273,6 +297,7 @@ public class AppointmentsController(BarberShopDbContext db, MercadoPagoService m
     }
 
     [HttpPatch("{id:guid}/remarcar")]
+    [EnableRateLimiting("write")]
     public async Task<ActionResult<AppointmentResponse>> Reschedule(Guid id, RescheduleAppointmentRequest request, CancellationToken cancellationToken)
     {
         var userId = User.GetUserId();
@@ -318,6 +343,7 @@ public class AppointmentsController(BarberShopDbContext db, MercadoPagoService m
 
     [HttpPatch("admin/{id:guid}/status")]
     [Authorize(Roles = "Admin")]
+    [EnableRateLimiting("write")]
     public async Task<ActionResult<AdminAppointmentResponse>> UpdateStatus(Guid id, AppointmentStatus status, CancellationToken cancellationToken)
     {
         var appointment = await db.Appointments
@@ -351,6 +377,7 @@ public class AppointmentsController(BarberShopDbContext db, MercadoPagoService m
 
     [HttpPatch("admin/{id:guid}/pagamento")]
     [Authorize(Roles = "Admin")]
+    [EnableRateLimiting("write")]
     public async Task<ActionResult<AdminAppointmentResponse>> UpdatePaymentStatus(Guid id, PaymentStatus paymentStatus, CancellationToken cancellationToken)
     {
         var appointment = await db.Appointments
@@ -378,6 +405,7 @@ public class AppointmentsController(BarberShopDbContext db, MercadoPagoService m
 
     [HttpDelete("admin/{id:guid}")]
     [Authorize(Roles = "Admin")]
+    [EnableRateLimiting("write")]
     public async Task<ActionResult> DeleteForAdmin(Guid id, CancellationToken cancellationToken)
     {
         var appointment = await db.Appointments.FirstOrDefaultAsync(item => item.Id == id, cancellationToken);
@@ -519,6 +547,6 @@ public class AppointmentsController(BarberShopDbContext db, MercadoPagoService m
         return exception.Message.Contains("invalid access token", StringComparison.OrdinalIgnoreCase) ||
                exception.Message.Contains("401", StringComparison.OrdinalIgnoreCase)
             ? "Token de acesso do Mercado Pago invalido. Configure um Access Token valido em MercadoPago:AccessToken e reinicie a API."
-            : $"Nao foi possivel gerar o checkout do Mercado Pago: {exception.Message}";
+            : "Nao foi possivel gerar o checkout do Mercado Pago. Tente novamente em instantes.";
     }
 }

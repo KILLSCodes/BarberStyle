@@ -3,6 +3,7 @@ using ApiBabterStyle.DTOs;
 using ApiBabterStyle.Model;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 
 namespace ApiBabterStyle.Controller;
@@ -12,6 +13,7 @@ namespace ApiBabterStyle.Controller;
 public class ProductsController(BarberShopDbContext db) : ControllerBase
 {
     [HttpGet]
+    [EnableRateLimiting("public-read")]
     public async Task<ActionResult<IReadOnlyList<ProductResponse>>> GetAll(CancellationToken cancellationToken)
     {
         var products = await db.Products
@@ -33,6 +35,7 @@ public class ProductsController(BarberShopDbContext db) : ControllerBase
     }
 
     [HttpGet("{id:guid}")]
+    [EnableRateLimiting("public-read")]
     public async Task<ActionResult<ProductResponse>> GetById(Guid id, CancellationToken cancellationToken)
     {
         var product = await db.Products
@@ -70,6 +73,7 @@ public class ProductsController(BarberShopDbContext db) : ControllerBase
 
     [Authorize(Roles = "Admin")]
     [HttpPost("admin")]
+    [EnableRateLimiting("write")]
     public async Task<ActionResult<ProductResponse>> Create(CreateProductRequest request, CancellationToken cancellationToken)
     {
         var validation = ValidateProduct(request.Name, request.Price, request.StockQuantity);
@@ -81,8 +85,8 @@ public class ProductsController(BarberShopDbContext db) : ControllerBase
         var product = new Product
         {
             Name = request.Name.Trim(),
-            Description = request.Description.Trim(),
-            Category = request.Category.Trim(),
+            Description = request.Description?.Trim() ?? string.Empty,
+            Category = request.Category?.Trim() ?? string.Empty,
             Price = request.Price,
             StockQuantity = request.StockQuantity,
             ImageUrl = request.ImageUrl?.Trim() ?? string.Empty
@@ -96,6 +100,7 @@ public class ProductsController(BarberShopDbContext db) : ControllerBase
 
     [Authorize(Roles = "Admin")]
     [HttpPut("admin/{id:guid}")]
+    [EnableRateLimiting("write")]
     public async Task<ActionResult<ProductResponse>> Update(Guid id, UpdateProductRequest request, CancellationToken cancellationToken)
     {
         var product = await db.Products.FirstOrDefaultAsync(item => item.Id == id, cancellationToken);
@@ -111,8 +116,8 @@ public class ProductsController(BarberShopDbContext db) : ControllerBase
         }
 
         product.Name = request.Name.Trim();
-        product.Description = request.Description.Trim();
-        product.Category = request.Category.Trim();
+        product.Description = request.Description?.Trim() ?? string.Empty;
+        product.Category = request.Category?.Trim() ?? string.Empty;
         product.Price = request.Price;
         product.StockQuantity = request.StockQuantity;
         product.ImageUrl = request.ImageUrl?.Trim() ?? string.Empty;
@@ -125,6 +130,7 @@ public class ProductsController(BarberShopDbContext db) : ControllerBase
 
     [Authorize(Roles = "Admin")]
     [HttpPatch("admin/{id:guid}/status")]
+    [EnableRateLimiting("write")]
     public async Task<ActionResult<ProductResponse>> ChangeStatus(Guid id, [FromQuery] bool active, CancellationToken cancellationToken)
     {
         var product = await db.Products.FirstOrDefaultAsync(item => item.Id == id, cancellationToken);
@@ -142,6 +148,7 @@ public class ProductsController(BarberShopDbContext db) : ControllerBase
 
     [Authorize(Roles = "Admin")]
     [HttpDelete("admin/{id:guid}")]
+    [EnableRateLimiting("write")]
     public async Task<IActionResult> Delete(Guid id, CancellationToken cancellationToken)
     {
         var product = await db.Products.FirstOrDefaultAsync(item => item.Id == id, cancellationToken);

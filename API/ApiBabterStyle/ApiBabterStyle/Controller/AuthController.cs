@@ -4,6 +4,7 @@ using ApiBabterStyle.Model;
 using ApiBabterStyle.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using System.Security.Cryptography;
 using System.Text;
@@ -21,6 +22,7 @@ public class AuthController(
 {
     private const int ResetTokenExpirationMinutes = 60;
 
+    [EnableRateLimiting("auth")]
     [HttpPost("cadastro")]
     public async Task<ActionResult<AuthResponse>> Register(RegisterRequest request, CancellationToken cancellationToken)
     {
@@ -31,9 +33,9 @@ public class AuthController(
             return BadRequest(new { message = "Nome, email e senha sao obrigatorios." });
         }
 
-        if (request.Password.Length < 6)
+        if (request.Password.Length < 8)
         {
-            return BadRequest(new { message = "A senha precisa ter pelo menos 6 caracteres." });
+            return BadRequest(new { message = "A senha precisa ter pelo menos 8 caracteres." });
         }
 
         var email = request.Email.Trim().ToLowerInvariant();
@@ -58,11 +60,17 @@ public class AuthController(
         return CreatedAtAction(nameof(Register), new AuthResponse(user.Id, user.Name, user.Email, user.Phone, user.Role, token.Token, token.ExpiresAt));
     }
 
+    [EnableRateLimiting("auth")]
     [HttpPost("login")]
     public async Task<ActionResult<AuthResponse>> Login(LoginRequest request, CancellationToken cancellationToken)
     {
         var credential = request.Email.Trim().ToLowerInvariant();
-        var user = credential == "admin" && request.Password == "admin"
+        if (credential == "admin" && request.Password == "admin" && !IsTemporaryAdminLoginAllowed())
+        {
+            return Unauthorized(new { message = "Login administrativo padrao desativado em producao." });
+        }
+
+        var user = IsTemporaryAdminLoginAllowed() && credential == "admin" && request.Password == "admin"
             ? await GetOrCreateTemporaryAdminAsync(cancellationToken)
             : await db.Users.FirstOrDefaultAsync(item => item.Email == credential, cancellationToken);
 
@@ -75,6 +83,7 @@ public class AuthController(
         return Ok(new AuthResponse(user.Id, user.Name, user.Email, user.Phone, user.Role, token.Token, token.ExpiresAt));
     }
 
+    [EnableRateLimiting("auth")]
     [HttpPost("esqueci-senha")]
     public async Task<IActionResult> ForgotPassword(ForgotPasswordRequest request, CancellationToken cancellationToken)
     {
@@ -129,6 +138,7 @@ public class AuthController(
         return Ok(new { message = "Se este email estiver cadastrado, enviaremos um link de recuperacao." });
     }
 
+    [EnableRateLimiting("auth")]
     [HttpPost("redefinir-senha")]
     public async Task<IActionResult> ResetPassword(ResetPasswordRequest request, CancellationToken cancellationToken)
     {
@@ -139,9 +149,9 @@ public class AuthController(
             return BadRequest(new { message = "Email, token e nova senha sao obrigatorios." });
         }
 
-        if (request.Password.Length < 6)
+        if (request.Password.Length < 8)
         {
-            return BadRequest(new { message = "A nova senha precisa ter pelo menos 6 caracteres." });
+            return BadRequest(new { message = "A nova senha precisa ter pelo menos 8 caracteres." });
         }
 
         var email = request.Email.Trim().ToLowerInvariant();
@@ -196,9 +206,9 @@ public class AuthController(
             return BadRequest(new { message = "Nome e WhatsApp sao obrigatorios." });
         }
 
-        if (!string.IsNullOrWhiteSpace(request.Password) && request.Password.Length < 6)
+        if (!string.IsNullOrWhiteSpace(request.Password) && request.Password.Length < 8)
         {
-            return BadRequest(new { message = "A nova senha precisa ter pelo menos 6 caracteres." });
+            return BadRequest(new { message = "A nova senha precisa ter pelo menos 8 caracteres." });
         }
 
         user.Name = request.Name.Trim();
@@ -241,6 +251,12 @@ public class AuthController(
     {
         var bytes = SHA256.HashData(Encoding.UTF8.GetBytes(token));
         return Convert.ToHexString(bytes);
+    }
+
+    private bool IsTemporaryAdminLoginAllowed()
+    {
+        return configuration.GetValue("AdminUser:AllowTemporaryAdmin", false) ||
+               Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT") == "Development";
     }
 
     private async Task<User> GetOrCreateTemporaryAdminAsync(CancellationToken cancellationToken)

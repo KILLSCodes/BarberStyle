@@ -3,6 +3,7 @@ using ApiBabterStyle.DTOs;
 using ApiBabterStyle.Model;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 
 namespace ApiBabterStyle.Controller;
@@ -12,6 +13,7 @@ namespace ApiBabterStyle.Controller;
 public class ServicesController(BarberShopDbContext db) : ControllerBase
 {
     [HttpGet]
+    [EnableRateLimiting("public-read")]
     public async Task<ActionResult<IReadOnlyList<ServiceResponse>>> GetAll(CancellationToken cancellationToken)
     {
         var services = await db.Services
@@ -43,12 +45,13 @@ public class ServicesController(BarberShopDbContext db) : ControllerBase
 
     [HttpPost("admin")]
     [Authorize(Roles = "Admin")]
+    [EnableRateLimiting("write")]
     public async Task<ActionResult<ServiceResponse>> Create(CreateServiceRequest request, CancellationToken cancellationToken)
     {
         var service = new BarberService
         {
             Name = request.Name.Trim(),
-            Description = request.Description.Trim(),
+            Description = request.Description?.Trim() ?? string.Empty,
             Price = request.Price,
             DurationMinutes = request.DurationMinutes
         };
@@ -61,6 +64,7 @@ public class ServicesController(BarberShopDbContext db) : ControllerBase
 
     [HttpPut("admin/{id:guid}")]
     [Authorize(Roles = "Admin")]
+    [EnableRateLimiting("write")]
     public async Task<ActionResult> Update(Guid id, UpdateServiceRequest request, CancellationToken cancellationToken)
     {
         var service = await db.Services.FirstOrDefaultAsync(item => item.Id == id, cancellationToken);
@@ -70,7 +74,7 @@ public class ServicesController(BarberShopDbContext db) : ControllerBase
         }
 
         service.Name = request.Name.Trim();
-        service.Description = request.Description.Trim();
+        service.Description = request.Description?.Trim() ?? string.Empty;
         service.Price = request.Price;
         service.DurationMinutes = request.DurationMinutes;
         service.Active = request.Active;
@@ -81,6 +85,7 @@ public class ServicesController(BarberShopDbContext db) : ControllerBase
 
     [HttpDelete("admin/{id:guid}")]
     [Authorize(Roles = "Admin")]
+    [EnableRateLimiting("write")]
     public async Task<ActionResult> Delete(Guid id, CancellationToken cancellationToken)
     {
         var service = await db.Services.FirstOrDefaultAsync(item => item.Id == id, cancellationToken);

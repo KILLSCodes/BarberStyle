@@ -105,11 +105,11 @@ public static class DatabaseSeeder
 
         if (admin is not null)
         {
-            if (admin.Role != "Admin")
-            {
-                admin.Role = "Admin";
-                await db.SaveChangesAsync();
-            }
+            admin.Name = configuration["AdminUser:Name"] ?? admin.Name;
+            admin.Phone = configuration["AdminUser:Phone"] ?? admin.Phone;
+            admin.Role = "Admin";
+            admin.PasswordHash = BCrypt.Net.BCrypt.HashPassword(password);
+            await db.SaveChangesAsync();
 
             return;
         }

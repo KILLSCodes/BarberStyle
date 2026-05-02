@@ -1,6 +1,7 @@
 using ApiBabterStyle.Data;
 using ApiBabterStyle.DTOs;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 
 namespace ApiBabterStyle.Controller;
@@ -10,6 +11,7 @@ namespace ApiBabterStyle.Controller;
 public class BarbersController(BarberShopDbContext db) : ControllerBase
 {
     [HttpGet]
+    [EnableRateLimiting("public-read")]
     public async Task<ActionResult<IReadOnlyList<BarberResponse>>> GetAll(CancellationToken cancellationToken)
     {
         var barbers = await db.Barbers

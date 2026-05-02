@@ -536,13 +536,22 @@ function renderAppointments() {
         </p>
       </div>
       <div class="appointment-actions">
-        ${appointment.paymentUrl ? `<a class="btn btn-gold" href="${appointment.paymentUrl}" target="_blank" rel="noreferrer">Pagar</a>` : ""}
+        ${isSafeExternalUrl(appointment.paymentUrl) ? `<a class="btn btn-gold" href="${escapeHtml(appointment.paymentUrl)}" target="_blank" rel="noreferrer">Pagar</a>` : ""}
         ${canEdit ? `<button class="btn btn-ghost" type="button" data-reschedule="${appointment.id}">Remarcar</button>` : ""}
         ${canEdit ? `<button class="btn btn-danger" type="button" data-cancel="${appointment.id}">Cancelar</button>` : ""}
       </div>
     `;
     appointmentsEl.appendChild(card);
   });
+}
+
+function isSafeExternalUrl(value) {
+  try {
+    const url = new URL(value);
+    return url.protocol === "https:" || url.protocol === "http:";
+  } catch {
+    return false;
+  }
 }
 
 async function cancelAppointment(id) {

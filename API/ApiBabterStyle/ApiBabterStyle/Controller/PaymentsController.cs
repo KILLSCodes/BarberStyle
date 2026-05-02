@@ -4,6 +4,7 @@ using ApiBabterStyle.Model;
 using ApiBabterStyle.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using System.Text.Json;
 
@@ -13,11 +14,11 @@ namespace ApiBabterStyle.Controller;
 [Route("api/pagamentos/mercado-pago")]
 public class PaymentsController(
     BarberShopDbContext db,
-    MercadoPagoService mercadoPagoService,
-    IWebHostEnvironment environment) : ControllerBase
+    MercadoPagoService mercadoPagoService) : ControllerBase
 {
     [Authorize]
     [HttpPost("preferencia")]
+    [EnableRateLimiting("write")]
     public async Task<ActionResult<MercadoPagoPreferenceResponse>> CreatePreference(
         MercadoPagoPreferenceRequest request,
         CancellationToken cancellationToken)
@@ -67,6 +68,7 @@ public class PaymentsController(
 
     [Authorize]
     [HttpPost("retorno")]
+    [EnableRateLimiting("write")]
     public async Task<ActionResult<MercadoPagoReturnResponse>> ProcessReturn(
         MercadoPagoReturnRequest request,
         CancellationToken cancellationToken)
@@ -80,33 +82,25 @@ public class PaymentsController(
             return NotFound(new { message = "Agendamento nao encontrado." });
         }
 
-        var normalizedStatus = request.Status?.Trim().ToLowerInvariant();
         var verifiedStatus = await TryVerifyPaymentStatusAsync(request.PaymentId, request.AppointmentId, cancellationToken);
-
-        if (verifiedStatus is not null)
+        if (verifiedStatus is null)
         {
-            normalizedStatus = verifiedStatus;
+            return BadRequest(new { message = "Nao foi possivel confirmar o pagamento no Mercado Pago." });
         }
 
-        if (normalizedStatus == "approved")
+        if (verifiedStatus == "approved")
         {
             appointment.Status = AppointmentStatus.Scheduled;
             appointment.PaymentStatus = PaymentStatus.Paid;
             appointment.MercadoPagoPaymentId = request.PaymentId ?? appointment.MercadoPagoPaymentId;
         }
-        else if (normalizedStatus is "pending" or "in_process")
+        else if (verifiedStatus is "pending" or "in_process")
         {
             appointment.PaymentStatus = PaymentStatus.WaitingMercadoPago;
         }
-        else if (normalizedStatus is "rejected" or "cancelled" or "failure" or "failed")
+        else if (verifiedStatus is "rejected" or "cancelled" or "failure" or "failed")
         {
             appointment.PaymentStatus = PaymentStatus.Failed;
-        }
-        else if (environment.IsDevelopment() && request.Status?.Equals("sucesso", StringComparison.OrdinalIgnoreCase) == true)
-        {
-            appointment.Status = AppointmentStatus.Scheduled;
-            appointment.PaymentStatus = PaymentStatus.Paid;
-            appointment.MercadoPagoPaymentId = request.PaymentId ?? appointment.MercadoPagoPaymentId;
         }
 
         await db.SaveChangesAsync(cancellationToken);
@@ -123,36 +117,34 @@ public class PaymentsController(
     }
 
     [HttpPost("webhook")]
+    [EnableRateLimiting("write")]
     public async Task<IActionResult> Webhook(CancellationToken cancellationToken)
     {
-        var externalReference = Request.Query["external_reference"].FirstOrDefault();
-        var status = Request.Query["status"].FirstOrDefault();
         var paymentId = await TryGetPaymentIdFromRequestAsync(cancellationToken);
 
-        if (paymentId.HasValue)
-        {
-            var payment = await mercadoPagoService.GetPaymentStatusAsync(paymentId.Value, cancellationToken);
-            externalReference = payment.AppointmentId?.ToString() ?? externalReference;
-            status = payment.Status ?? status;
-        }
-
-        if (!Guid.TryParse(externalReference, out var appointmentId) || string.IsNullOrWhiteSpace(status))
+        if (!paymentId.HasValue)
         {
             return Ok();
         }
 
-        var appointment = await db.Appointments.FirstOrDefaultAsync(item => item.Id == appointmentId, cancellationToken);
+        var payment = await mercadoPagoService.GetPaymentStatusAsync(paymentId.Value, cancellationToken);
+        if (payment.AppointmentId is null || string.IsNullOrWhiteSpace(payment.Status))
+        {
+            return Ok();
+        }
+
+        var appointment = await db.Appointments.FirstOrDefaultAsync(item => item.Id == payment.AppointmentId.Value, cancellationToken);
         if (appointment is null)
         {
             return Ok();
         }
 
-        switch (status.ToLowerInvariant())
+        switch (payment.Status.ToLowerInvariant())
         {
             case "approved":
                 appointment.Status = AppointmentStatus.Scheduled;
                 appointment.PaymentStatus = PaymentStatus.Paid;
-                appointment.MercadoPagoPaymentId = paymentId?.ToString() ?? appointment.MercadoPagoPaymentId;
+                appointment.MercadoPagoPaymentId = paymentId.Value.ToString();
                 break;
             case "refunded":
                 appointment.PaymentStatus = PaymentStatus.Refunded;
@@ -222,6 +214,6 @@ public class PaymentsController(
         return exception.Message.Contains("invalid access token", StringComparison.OrdinalIgnoreCase) ||
                exception.Message.Contains("401", StringComparison.OrdinalIgnoreCase)
             ? "Token de acesso do Mercado Pago invalido. Configure um Access Token valido em MercadoPago:AccessToken e reinicie a API."
-            : $"Nao foi possivel gerar o checkout do Mercado Pago: {exception.Message}";
+            : "Nao foi possivel gerar o checkout do Mercado Pago. Tente novamente em instantes.";
     }
 }
