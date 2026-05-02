@@ -12,6 +12,10 @@ public record CustomerProfileResponse(Guid UserId, string Name, string Email, st
 
 public record UpdateProfileRequest(string Name, string Phone, string? Password);
 
+public record ForgotPasswordRequest(string Email);
+
+public record ResetPasswordRequest(string Email, string Token, string Password);
+
 public record BarberResponse(Guid Id, string Name, string Specialty);
 
 public record ServiceResponse(Guid Id, string Name, string Description, decimal Price, int DurationMinutes);

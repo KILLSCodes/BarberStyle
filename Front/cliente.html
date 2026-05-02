@@ -50,6 +50,34 @@
             <input name="password" type="password" autocomplete="current-password" required />
           </label>
           <button class="btn btn-gold" type="submit">Entrar</button>
+          <button class="link-button" type="button" data-forgot-open>Esqueci minha senha</button>
+        </form>
+
+        <form class="auth-form" data-forgot-form>
+          <h2>Recuperar senha</h2>
+          <p class="form-help">Informe seu email cadastrado para receber o link de redefinicao.</p>
+          <label>
+            Email
+            <input name="email" type="email" autocomplete="email" required />
+          </label>
+          <button class="btn btn-gold" type="submit">Enviar link de recuperacao</button>
+          <button class="link-button" type="button" data-login-open>Voltar para entrar</button>
+        </form>
+
+        <form class="auth-form" data-reset-form>
+          <h2>Criar nova senha</h2>
+          <p class="form-help">Digite sua nova senha para recuperar o acesso.</p>
+          <input name="email" type="hidden" />
+          <input name="token" type="hidden" />
+          <label>
+            Nova senha
+            <input name="password" type="password" autocomplete="new-password" minlength="6" required />
+          </label>
+          <label>
+            Confirmar senha
+            <input name="confirmPassword" type="password" autocomplete="new-password" minlength="6" required />
+          </label>
+          <button class="btn btn-gold" type="submit">Salvar nova senha</button>
         </form>
 
         <form class="auth-form" data-register-form>

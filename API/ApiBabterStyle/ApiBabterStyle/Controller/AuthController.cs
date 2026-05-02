@@ -5,13 +5,21 @@ using ApiBabterStyle.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using System.Security.Cryptography;
+using System.Text;
 
 namespace ApiBabterStyle.Controller;
 
 [ApiController]
 [Route("api/auth")]
-public class AuthController(BarberShopDbContext db, JwtTokenService jwtTokenService) : ControllerBase
+public class AuthController(
+    BarberShopDbContext db,
+    JwtTokenService jwtTokenService,
+    SmtpEmailService smtpEmailService,
+    IConfiguration configuration) : ControllerBase
 {
+    private const int ResetTokenExpirationMinutes = 60;
+
     [HttpPost("cadastro")]
     public async Task<ActionResult<AuthResponse>> Register(RegisterRequest request, CancellationToken cancellationToken)
     {
@@ -66,6 +74,96 @@ public class AuthController(BarberShopDbContext db, JwtTokenService jwtTokenServ
         return Ok(new AuthResponse(user.Id, user.Name, user.Email, user.Phone, user.Role, token.Token, token.ExpiresAt));
     }
 
+    [HttpPost("esqueci-senha")]
+    public async Task<IActionResult> ForgotPassword(ForgotPasswordRequest request, CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(request.Email))
+        {
+            return BadRequest(new { message = "Informe o email cadastrado." });
+        }
+
+        var email = request.Email.Trim().ToLowerInvariant();
+        var user = await db.Users.FirstOrDefaultAsync(item => item.Email == email, cancellationToken);
+
+        if (user is null)
+        {
+            return Ok(new { message = "Se este email estiver cadastrado, enviaremos um link de recuperacao." });
+        }
+
+        if (!smtpEmailService.IsConfigured)
+        {
+            return StatusCode(StatusCodes.Status503ServiceUnavailable, new
+            {
+                message = "SMTP nao configurado. Configure Smtp__Host, Smtp__FromEmail e demais chaves no Render."
+            });
+        }
+
+        var rawToken = CreatePasswordResetToken();
+        user.PasswordResetTokenHash = HashToken(rawToken);
+        user.PasswordResetTokenExpiresAt = DateTime.UtcNow.AddMinutes(ResetTokenExpirationMinutes);
+        user.PasswordResetRequestedAt = DateTime.UtcNow;
+
+        await db.SaveChangesAsync(cancellationToken);
+
+        var resetUrl = BuildPasswordResetUrl(email, rawToken);
+        try
+        {
+            await smtpEmailService.SendPasswordResetAsync(user.Email, user.Name, resetUrl, cancellationToken);
+        }
+        catch
+        {
+            user.PasswordResetTokenHash = null;
+            user.PasswordResetTokenExpiresAt = null;
+            user.PasswordResetRequestedAt = null;
+            await db.SaveChangesAsync(cancellationToken);
+
+            return StatusCode(StatusCodes.Status503ServiceUnavailable, new
+            {
+                message = "Nao foi possivel enviar o email de recuperacao agora. Verifique as configuracoes SMTP."
+            });
+        }
+
+        return Ok(new { message = "Se este email estiver cadastrado, enviaremos um link de recuperacao." });
+    }
+
+    [HttpPost("redefinir-senha")]
+    public async Task<IActionResult> ResetPassword(ResetPasswordRequest request, CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(request.Email) ||
+            string.IsNullOrWhiteSpace(request.Token) ||
+            string.IsNullOrWhiteSpace(request.Password))
+        {
+            return BadRequest(new { message = "Email, token e nova senha sao obrigatorios." });
+        }
+
+        if (request.Password.Length < 6)
+        {
+            return BadRequest(new { message = "A nova senha precisa ter pelo menos 6 caracteres." });
+        }
+
+        var email = request.Email.Trim().ToLowerInvariant();
+        var tokenHash = HashToken(request.Token.Trim());
+        var user = await db.Users.FirstOrDefaultAsync(item => item.Email == email, cancellationToken);
+
+        if (user is null ||
+            string.IsNullOrWhiteSpace(user.PasswordResetTokenHash) ||
+            user.PasswordResetTokenHash != tokenHash ||
+            user.PasswordResetTokenExpiresAt is null ||
+            user.PasswordResetTokenExpiresAt <= DateTime.UtcNow)
+        {
+            return BadRequest(new { message = "Link de recuperacao invalido ou expirado." });
+        }
+
+        user.PasswordHash = BCrypt.Net.BCrypt.HashPassword(request.Password);
+        user.PasswordResetTokenHash = null;
+        user.PasswordResetTokenExpiresAt = null;
+        user.PasswordResetRequestedAt = null;
+
+        await db.SaveChangesAsync(cancellationToken);
+
+        return Ok(new { message = "Senha alterada com sucesso. Entre com sua nova senha." });
+    }
+
     [Authorize]
     [HttpGet("me")]
     public async Task<ActionResult<CustomerProfileResponse>> GetProfile(CancellationToken cancellationToken)
@@ -115,6 +213,32 @@ public class AuthController(BarberShopDbContext db, JwtTokenService jwtTokenServ
 
     private static CustomerProfileResponse ToProfileResponse(User user)
         => new(user.Id, user.Name, user.Email, user.Phone, user.Role);
+
+    private string BuildPasswordResetUrl(string email, string token)
+    {
+        var frontendBaseUrl = configuration["MercadoPago:FrontendBaseUrl"];
+        if (string.IsNullOrWhiteSpace(frontendBaseUrl))
+        {
+            frontendBaseUrl = configuration["Frontend:BaseUrl"] ?? "http://127.0.0.1:5173";
+        }
+
+        return $"{frontendBaseUrl.TrimEnd('/')}/cliente.html?reset=senha&email={Uri.EscapeDataString(email)}&token={Uri.EscapeDataString(token)}";
+    }
+
+    private static string CreatePasswordResetToken()
+    {
+        var bytes = RandomNumberGenerator.GetBytes(32);
+        return Convert.ToBase64String(bytes)
+            .Replace("+", "-", StringComparison.Ordinal)
+            .Replace("/", "_", StringComparison.Ordinal)
+            .TrimEnd('=');
+    }
+
+    private static string HashToken(string token)
+    {
+        var bytes = SHA256.HashData(Encoding.UTF8.GetBytes(token));
+        return Convert.ToHexString(bytes);
+    }
 
     private async Task<User> GetOrCreateTemporaryAdminAsync(CancellationToken cancellationToken)
     {

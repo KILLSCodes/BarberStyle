@@ -11,6 +11,8 @@ const dashboard = document.querySelector("[data-customer-dashboard]");
 const tabs = document.querySelectorAll("[data-auth-tab]");
 const loginForm = document.querySelector("[data-login-form]");
 const registerForm = document.querySelector("[data-register-form]");
+const forgotForm = document.querySelector("[data-forgot-form]");
+const resetForm = document.querySelector("[data-reset-form]");
 const authMessage = document.querySelector("[data-auth-message]");
 const appointmentsEl = document.querySelector("[data-appointments]");
 const emptyEl = document.querySelector("[data-empty]");
@@ -42,6 +44,10 @@ function bindEvents() {
 
   registerForm.addEventListener("submit", handleRegister);
   loginForm.addEventListener("submit", handleLogin);
+  forgotForm.addEventListener("submit", handleForgotPassword);
+  resetForm.addEventListener("submit", handleResetPassword);
+  document.querySelector("[data-forgot-open]").addEventListener("click", () => setTab("forgot"));
+  document.querySelector("[data-login-open]").addEventListener("click", () => setTab("login"));
   document.querySelector("[data-logout]").addEventListener("click", logout);
   document.querySelector("[data-refresh]").addEventListener("click", loadAppointments);
   document.querySelector("[data-close-dialog]").addEventListener("click", () => dialog.close());
@@ -66,6 +72,8 @@ function setTab(target) {
   tabs.forEach((tab) => tab.classList.toggle("is-active", tab.dataset.authTab === target));
   loginForm.classList.toggle("is-active", target === "login");
   registerForm.classList.toggle("is-active", target === "register");
+  forgotForm.classList.toggle("is-active", target === "forgot");
+  resetForm.classList.toggle("is-active", target === "reset");
   authMessage.textContent = "";
 }
 
@@ -75,6 +83,14 @@ function applyInitialAuthTab() {
 
   if (tab === "register" || tab === "login") {
     setTab(tab);
+  }
+
+  if (params.get("reset") === "senha" && params.get("email") && params.get("token")) {
+    session = null;
+    localStorage.removeItem(sessionKey);
+    resetForm.elements.email.value = params.get("email");
+    resetForm.elements.token.value = params.get("token");
+    setTab("reset");
   }
 }
 
@@ -137,6 +153,78 @@ async function handleLogin(event) {
     authMessage.textContent = error.message.includes("Failed to fetch")
       ? "Nao foi possivel conectar com a API agora. Tente novamente em instantes."
       : `${error.message} Se ainda nao tem cadastro, clique em Criar conta.`;
+  }
+}
+
+async function handleForgotPassword(event) {
+  event.preventDefault();
+  authMessage.textContent = "Enviando link de recuperacao...";
+
+  const data = new FormData(forgotForm);
+  const payload = {
+    email: data.get("email").trim().toLowerCase(),
+  };
+
+  try {
+    const response = await fetch(`${apiUrl}/api/auth/esqueci-senha`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    const result = await response.json().catch(() => null);
+
+    if (!response.ok) {
+      throw new Error(result?.message || "Nao foi possivel enviar o email de recuperacao.");
+    }
+
+    forgotForm.reset();
+    authMessage.textContent = result?.message || "Se este email estiver cadastrado, enviaremos o link de recuperacao.";
+  } catch (error) {
+    authMessage.textContent = error.message.includes("Failed to fetch")
+      ? "Nao foi possivel conectar com a API agora. Tente novamente em instantes."
+      : error.message;
+  }
+}
+
+async function handleResetPassword(event) {
+  event.preventDefault();
+  authMessage.textContent = "Salvando nova senha...";
+
+  const data = new FormData(resetForm);
+  const password = data.get("password");
+  const confirmPassword = data.get("confirmPassword");
+
+  if (password !== confirmPassword) {
+    authMessage.textContent = "As senhas nao conferem.";
+    return;
+  }
+
+  const payload = {
+    email: data.get("email"),
+    token: data.get("token"),
+    password,
+  };
+
+  try {
+    const response = await fetch(`${apiUrl}/api/auth/redefinir-senha`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    const result = await response.json().catch(() => null);
+
+    if (!response.ok) {
+      throw new Error(result?.message || "Nao foi possivel redefinir sua senha.");
+    }
+
+    resetForm.reset();
+    setTab("login");
+    window.history.replaceState({}, document.title, "cliente.html?tab=login");
+    authMessage.textContent = result?.message || "Senha alterada com sucesso. Entre com sua nova senha.";
+  } catch (error) {
+    authMessage.textContent = error.message.includes("Failed to fetch")
+      ? "Nao foi possivel conectar com a API agora. Tente novamente em instantes."
+      : error.message;
   }
 }
 

@@ -38,6 +38,7 @@ builder.Services.AddDbContext<BarberShopDbContext>(options =>
 
 builder.Services.AddScoped<JwtTokenService>();
 builder.Services.AddScoped<MercadoPagoService>();
+builder.Services.AddScoped<SmtpEmailService>();
 
 var jwtSecret = builder.Configuration["Jwt:Secret"] ?? "dev-secret-change-me-dev-secret-change-me";
 var signingKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtSecret));

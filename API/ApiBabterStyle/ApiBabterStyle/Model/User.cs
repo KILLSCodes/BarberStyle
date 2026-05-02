@@ -8,6 +8,9 @@ public class User
     public string Phone { get; set; } = string.Empty;
     public string PasswordHash { get; set; } = string.Empty;
     public string Role { get; set; } = "Cliente";
+    public string? PasswordResetTokenHash { get; set; }
+    public DateTime? PasswordResetTokenExpiresAt { get; set; }
+    public DateTime? PasswordResetRequestedAt { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
     public ICollection<Appointment> Appointments { get; set; } = new List<Appointment>();

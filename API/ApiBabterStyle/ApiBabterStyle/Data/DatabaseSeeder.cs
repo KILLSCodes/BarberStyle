@@ -19,6 +19,7 @@ public static class DatabaseSeeder
 
         await db.Database.EnsureCreatedAsync();
         await EnsureSqliteAppointmentColumnsAsync(db);
+        await EnsureSqliteUserColumnsAsync(db);
 
         if (!await db.Barbers.AnyAsync())
         {
@@ -58,6 +59,33 @@ public static class DatabaseSeeder
         if (!columns.Contains("MercadoPagoRefundId"))
         {
             await db.Database.ExecuteSqlRawAsync("ALTER TABLE Appointments ADD COLUMN MercadoPagoRefundId TEXT NULL");
+        }
+    }
+
+    private static async Task EnsureSqliteUserColumnsAsync(BarberShopDbContext db)
+    {
+        if (db.Database.ProviderName != "Microsoft.EntityFrameworkCore.Sqlite")
+        {
+            return;
+        }
+
+        var columns = await db.Database
+            .SqlQueryRaw<string>("SELECT name AS Value FROM pragma_table_info('Users')")
+            .ToListAsync();
+
+        if (!columns.Contains("PasswordResetTokenHash"))
+        {
+            await db.Database.ExecuteSqlRawAsync("ALTER TABLE Users ADD COLUMN PasswordResetTokenHash TEXT NULL");
+        }
+
+        if (!columns.Contains("PasswordResetTokenExpiresAt"))
+        {
+            await db.Database.ExecuteSqlRawAsync("ALTER TABLE Users ADD COLUMN PasswordResetTokenExpiresAt TEXT NULL");
+        }
+
+        if (!columns.Contains("PasswordResetRequestedAt"))
+        {
+            await db.Database.ExecuteSqlRawAsync("ALTER TABLE Users ADD COLUMN PasswordResetRequestedAt TEXT NULL");
         }
     }
 

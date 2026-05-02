@@ -152,6 +152,23 @@ h1 {
   background: rgba(201, 164, 95, 0.16);
 }
 
+.link-button {
+  width: fit-content;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: #7c5c20;
+  cursor: pointer;
+  font-weight: 900;
+  text-align: left;
+}
+
+.link-button:hover,
+.link-button:focus-visible {
+  color: #15100a;
+  text-decoration: underline;
+}
+
 .auth-form {
   display: none;
   gap: 14px;
@@ -219,6 +236,12 @@ select:focus {
   margin: 14px 0 0;
   color: var(--muted-dark);
   font-weight: 800;
+}
+
+.form-help {
+  margin: 0;
+  color: var(--muted-dark);
+  font-weight: 700;
 }
 
 .payment-return-message {
@@ -466,5 +489,10 @@ select:focus {
 
   .btn {
     width: 100%;
+  }
+
+  .link-button {
+    width: 100%;
+    text-align: center;
   }
 }
