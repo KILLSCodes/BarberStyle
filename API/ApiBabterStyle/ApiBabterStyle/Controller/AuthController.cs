@@ -16,7 +16,8 @@ public class AuthController(
     BarberShopDbContext db,
     JwtTokenService jwtTokenService,
     SmtpEmailService smtpEmailService,
-    IConfiguration configuration) : ControllerBase
+    IConfiguration configuration,
+    ILogger<AuthController> logger) : ControllerBase
 {
     private const int ResetTokenExpirationMinutes = 60;
 
@@ -110,8 +111,10 @@ public class AuthController(
         {
             await smtpEmailService.SendPasswordResetAsync(user.Email, user.Name, resetUrl, cancellationToken);
         }
-        catch
+        catch (Exception error)
         {
+            logger.LogError(error, "Falha ao enviar email de recuperacao de senha para {Email}", user.Email);
+
             user.PasswordResetTokenHash = null;
             user.PasswordResetTokenExpiresAt = null;
             user.PasswordResetRequestedAt = null;
